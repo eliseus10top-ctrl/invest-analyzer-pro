@@ -1,19 +1,454 @@
 import os
-import math
+import re
 import time
-from datetime import datetime
+import threading
+from datetime import datetime, timezone
 
-import requests
-import pandas as pd
+from flask import Flask, jsonify, request, session, render_template_string
 import yfinance as yf
-from flask import Flask, jsonify, render_template_string, request, session
-
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "invest-analyzer-render-change-this-key")
 
 # ============================================================
 # INVEST ANALYZER PRO
 # Flask + Render + Yahoo Finance
+# Carteira com cache para evitar "Too Many Requests"
+# ============================================================
+
+app = Flask(__name__)
+
+# Use a strong SECRET_KEY environment variable on Render.
+app.secret_key = os.environ.get("SECRET_KEY", "invest-analyzer-change-this-key")
+
+# ------------------------------------------------------------
+# Configuração do cache
+# ------------------------------------------------------------
+CACHE_TTL_SECONDS = int(os.environ.get("YAHOO_CACHE_TTL", "600"))  # 10 min
+REQUEST_DELAY_SECONDS = float(os.environ.get("YAHOO_REQUEST_DELAY", "1.0"))
+
+_price_cache = {}
+_cache_lock = threading.Lock()
+_last_yahoo_request = 0.0
+_request_lock = threading.Lock()
+
+
+# ============================================================
+# UTILIDADES
+# ============================================================
+
+def normalize_symbol(symbol):
+    """
+    Converte automaticamente ações brasileiras:
+      XPLG11 -> XPLG11.SA
+      PETR4  -> PETR4.SA
+      VALE3  -> VALE3.SA
+
+    Símbolos americanos continuam iguais:
+      AAPL -> AAPL
+      MSFT -> MSFT
+      NVDA -> NVDA
+
+    Se o usuário já informar .SA, mantém.
+    """
+    if not symbol:
+        return ""
+
+    symbol = str(symbol).strip().upper().replace(" ", "")
+
+    if symbol.endswith(".SA"):
+        return symbol
+
+    # A maioria dos tickers B3 possui 4 letras + 1 ou 2 números.
+    if re.fullmatch(r"[A-Z]{4}\d{1,2}", symbol):
+        return symbol + ".SA"
+
+    return symbol
+
+
+def display_symbol(symbol):
+    """Remove .SA apenas para exibição."""
+    symbol = normalize_symbol(symbol)
+    return symbol[:-3] if symbol.endswith(".SA") else symbol
+
+
+def to_float(value, default=0.0):
+    try:
+        value = float(value)
+        if value != value:  # NaN
+            return default
+        return value
+    except (TypeError, ValueError):
+        return default
+
+
+def format_brl(value):
+    value = to_float(value)
+    text = f"{value:,.2f}"
+    return "R$ " + text.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def now_timestamp():
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ============================================================
+# CACHE / YAHOO FINANCE
+# ============================================================
+
+def get_cached_price(symbol):
+    """
+    Retorna preço em cache se ainda estiver dentro do TTL.
+    """
+    with _cache_lock:
+        item = _price_cache.get(symbol)
+
+        if not item:
+            return None
+
+        age = time.time() - item["timestamp"]
+
+        if age <= CACHE_TTL_SECONDS:
+            return item.copy()
+
+        # Mantemos o item expirado como fallback.
+        return {
+            **item,
+            "expired": True,
+            "age": age
+        }
+
+
+def save_price_cache(symbol, data):
+    with _cache_lock:
+        _price_cache[symbol] = {
+            **data,
+            "timestamp": time.time(),
+            "updated_at": now_timestamp()
+        }
+
+
+def wait_before_yahoo_request():
+    """
+    Evita disparar várias requisições seguidas.
+    """
+    global _last_yahoo_request
+
+    with _request_lock:
+        elapsed = time.time() - _last_yahoo_request
+
+        if elapsed < REQUEST_DELAY_SECONDS:
+            time.sleep(REQUEST_DELAY_SECONDS - elapsed)
+
+        _last_yahoo_request = time.time()
+
+
+def fetch_yahoo_price(symbol):
+    """
+    Busca o último preço disponível no Yahoo Finance.
+    Usa histórico de poucos dias para reduzir chamadas e
+    evita Ticker.info, que costuma gerar muitas requisições.
+    """
+    yahoo_symbol = normalize_symbol(symbol)
+
+    # 1) Cache válido
+    cached = get_cached_price(yahoo_symbol)
+    if cached and not cached.get("expired"):
+        return {
+            "ok": True,
+            "symbol": yahoo_symbol,
+            "price": cached["price"],
+            "currency": cached.get("currency", "BRL" if yahoo_symbol.endswith(".SA") else "USD"),
+            "source": "cache",
+            "updated_at": cached.get("updated_at")
+        }
+
+    # 2) Se existe cache expirado, tentamos atualizar.
+    # Se o Yahoo falhar, o último preço ainda poderá ser usado.
+    stale_cache = cached
+
+    try:
+        wait_before_yahoo_request()
+
+        ticker = yf.Ticker(yahoo_symbol)
+
+        # Uma única chamada de histórico.
+        history = ticker.history(
+            period="5d",
+            interval="1d",
+            auto_adjust=False,
+            actions=False
+        )
+
+        if history is None or history.empty:
+            raise RuntimeError("Yahoo Finance não retornou dados para este ativo.")
+
+        # Último fechamento/preço disponível.
+        close_series = history["Close"].dropna()
+
+        if close_series.empty:
+            raise RuntimeError("Não foi possível encontrar um preço válido.")
+
+        price = to_float(close_series.iloc[-1])
+
+        if price <= 0:
+            raise RuntimeError("Yahoo Finance retornou um preço inválido.")
+
+        currency = "BRL" if yahoo_symbol.endswith(".SA") else "USD"
+
+        data = {
+            "price": price,
+            "currency": currency,
+            "source": "Yahoo Finance"
+        }
+
+        save_price_cache(yahoo_symbol, data)
+
+        return {
+            "ok": True,
+            "symbol": yahoo_symbol,
+            "price": price,
+            "currency": currency,
+            "source": "Yahoo Finance",
+            "updated_at": now_timestamp()
+        }
+
+    except Exception as exc:
+        error_text = str(exc)
+
+        # 3) Fallback: último preço conhecido
+        if stale_cache and stale_cache.get("price"):
+            return {
+                "ok": True,
+                "symbol": yahoo_symbol,
+                "price": stale_cache["price"],
+                "currency": stale_cache.get(
+                    "currency",
+                    "BRL" if yahoo_symbol.endswith(".SA") else "USD"
+                ),
+                "source": "último preço em cache",
+                "warning": "Yahoo Finance está temporariamente indisponível ou limitou as requisições.",
+                "updated_at": stale_cache.get("updated_at")
+            }
+
+        return {
+            "ok": False,
+            "symbol": yahoo_symbol,
+            "price": None,
+            "error": (
+                "Não foi possível consultar o Yahoo Finance agora. "
+                "Aguarde alguns minutos e tente novamente."
+            ),
+            "details": error_text[:300]
+        }
+
+
+# ============================================================
+# CARTEIRA
+# ============================================================
+
+def get_portfolio():
+    portfolio = session.get("portfolio", [])
+    if not isinstance(portfolio, list):
+        portfolio = []
+    return portfolio
+
+
+def save_portfolio(portfolio):
+    session["portfolio"] = portfolio
+    session.modified = True
+
+
+def calculate_portfolio(refresh_prices=False):
+    portfolio = get_portfolio()
+
+    total_invested = 0.0
+    total_value = 0.0
+    items = []
+
+    for item in portfolio:
+        symbol = normalize_symbol(item.get("symbol", ""))
+        quantity = to_float(item.get("quantity", 0))
+        average_price = to_float(item.get("average_price", 0))
+
+        invested = quantity * average_price
+        total_invested += invested
+
+        price_data = fetch_yahoo_price(symbol)
+        current_price = price_data.get("price") if price_data.get("ok") else None
+
+        if current_price is not None:
+            current_value = quantity * current_price
+        else:
+            current_value = 0.0
+
+        profit = current_value - invested
+
+        profitability = (profit / invested * 100) if invested else 0.0
+
+        items.append({
+            "symbol": display_symbol(symbol),
+            "yahoo_symbol": symbol,
+            "quantity": quantity,
+            "average_price": average_price,
+            "invested": invested,
+            "current_price": current_price,
+            "current_value": current_value,
+            "profit": profit,
+            "profitability": profitability,
+            "currency": price_data.get("currency"),
+            "price_source": price_data.get("source"),
+            "warning": price_data.get("warning"),
+            "error": price_data.get("error")
+        })
+
+        total_value += current_value
+
+    profit_total = total_value - total_invested
+    profitability_total = (
+        profit_total / total_invested * 100
+        if total_invested
+        else 0.0
+    )
+
+    return {
+        "items": items,
+        "summary": {
+            "invested": total_invested,
+            "value": total_value,
+            "profit": profit_total,
+            "profitability": profitability_total
+        }
+    }
+
+
+# ============================================================
+# ROTAS API
+# ============================================================
+
+@app.get("/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "service": "Invest Analyzer Pro",
+        "time": now_timestamp()
+    })
+
+
+@app.get("/api/portfolio")
+def api_portfolio():
+    try:
+        return jsonify({
+            "ok": True,
+            **calculate_portfolio()
+        })
+    except Exception as exc:
+        return jsonify({
+            "ok": False,
+            "error": str(exc)
+        }), 500
+
+
+@app.post("/api/portfolio/add")
+def add_asset():
+    data = request.get_json(silent=True) or request.form
+
+    symbol = normalize_symbol(data.get("symbol", ""))
+    quantity = to_float(data.get("quantity"))
+    average_price = to_float(
+        data.get("average_price", data.get("price"))
+    )
+
+    if not symbol:
+        return jsonify({"ok": False, "error": "Informe o código do ativo."}), 400
+
+    if quantity <= 0:
+        return jsonify({"ok": False, "error": "A quantidade deve ser maior que zero."}), 400
+
+    if average_price <= 0:
+        return jsonify({"ok": False, "error": "O preço médio deve ser maior que zero."}), 400
+
+    portfolio = get_portfolio()
+
+    # Se o ativo já existir, soma a posição usando preço médio ponderado.
+    existing = next(
+        (x for x in portfolio if normalize_symbol(x.get("symbol")) == symbol),
+        None
+    )
+
+    if existing:
+        old_quantity = to_float(existing.get("quantity"))
+        old_average = to_float(existing.get("average_price"))
+
+        new_quantity = old_quantity + quantity
+        new_average = (
+            (old_quantity * old_average) +
+            (quantity * average_price)
+        ) / new_quantity
+
+        existing["quantity"] = new_quantity
+        existing["average_price"] = new_average
+    else:
+        portfolio.append({
+            "symbol": symbol,
+            "quantity": quantity,
+            "average_price": average_price
+        })
+
+    save_portfolio(portfolio)
+
+    return jsonify({
+        "ok": True,
+        "message": f"{display_symbol(symbol)} adicionado à carteira.",
+        **calculate_portfolio()
+    })
+
+
+@app.post("/api/portfolio/remove")
+def remove_asset():
+    data = request.get_json(silent=True) or request.form
+    symbol = normalize_symbol(data.get("symbol", ""))
+
+    if not symbol:
+        return jsonify({"ok": False, "error": "Informe o ativo."}), 400
+
+    portfolio = [
+        item for item in get_portfolio()
+        if normalize_symbol(item.get("symbol", "")) != symbol
+    ]
+
+    save_portfolio(portfolio)
+
+    return jsonify({
+        "ok": True,
+        "message": f"{display_symbol(symbol)} removido.",
+        **calculate_portfolio()
+    })
+
+
+@app.post("/api/portfolio/clear")
+def clear_portfolio():
+    session.pop("portfolio", None)
+
+    return jsonify({
+        "ok": True,
+        "message": "Carteira limpa.",
+        "items": [],
+        "summary": {
+            "invested": 0,
+            "value": 0,
+            "profit": 0,
+            "profitability": 0
+        }
+    })
+
+
+@app.get("/api/price/<symbol>")
+def api_price(symbol):
+    result = fetch_yahoo_price(symbol)
+    status = 200 if result.get("ok") else 503
+    return jsonify(result), status
+
+
+# ============================================================
+# PÁGINA
 # ============================================================
 
 HTML = r"""
@@ -21,419 +456,406 @@ HTML = r"""
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Invest Analyzer Pro</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#0b0f14;color:#f2f5f7;font-family:Arial,Helvetica,sans-serif}
-.container{max-width:1180px;margin:auto;padding:20px}
-header{background:linear-gradient(135deg,#111827,#172033);border:1px solid #263244;border-radius:18px;padding:22px;margin-bottom:18px}
-h1{margin:0 0 7px;font-size:28px}
-.sub{color:#aab4c0}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
-.card{background:#11161d;border:1px solid #25303d;border-radius:16px;padding:17px}
-.label{font-size:13px;color:#98a4b2;margin-bottom:8px}
-.value{font-size:23px;font-weight:700}
-.form{display:grid;grid-template-columns:1.1fr .8fr .9fr auto;gap:10px}
-input,button,select{width:100%;border:1px solid #344253;border-radius:10px;padding:13px;background:#0c1117;color:#fff;font-size:15px}
-button{cursor:pointer;background:#2563eb;border-color:#2563eb;font-weight:700}
-button.secondary{background:#1b2430;border-color:#344253}
-button.danger{background:#b91c1c;border-color:#b91c1c}
-button:hover{filter:brightness(1.1)}
-.section{background:#11161d;border:1px solid #25303d;border-radius:16px;padding:18px;margin-bottom:18px}
-.section h2{margin-top:0;font-size:19px}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #26303b;font-size:14px}
-th{color:#9eabb8}
-.positive{color:#34d399}.negative{color:#fb7185}.muted{color:#9eabb8}
-.actions{display:flex;gap:8px;flex-wrap:wrap}
-.status{margin-top:10px;min-height:20px;color:#9eabb8}
-.result{display:none;margin-top:15px}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.metric{background:#0c1117;border:1px solid #273341;border-radius:12px;padding:13px}
-.metric b{display:block;margin-top:5px;font-size:17px}
-.badge{display:inline-block;border-radius:999px;padding:5px 9px;background:#1e293b;color:#cbd5e1;font-size:12px}
-@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.form{grid-template-columns:1fr 1fr}.form button{grid-column:1/-1}.metrics{grid-template-columns:1fr 1fr}}
-@media(max-width:520px){.container{padding:12px}header{padding:18px}.grid{grid-template-columns:1fr 1fr}.value{font-size:18px}.form{grid-template-columns:1fr}.form button{grid-column:auto}th,td{padding:9px 5px;font-size:12px}.hide-mobile{display:none}.metrics{grid-template-columns:1fr}}
+body{
+    margin:0;
+    background:#080b10;
+    color:#f2f4f8;
+    font-family:Arial,Helvetica,sans-serif;
+}
+.container{
+    width:min(100%,760px);
+    margin:auto;
+    padding:22px;
+}
+.hero,.card{
+    background:#10151c;
+    border:1px solid #26303d;
+    border-radius:26px;
+    padding:28px;
+    margin-bottom:22px;
+}
+.hero{
+    background:#141b2b;
+}
+h1{font-size:34px;margin:0 0 12px}
+h2{font-size:25px;margin:0 0 22px}
+.subtitle{
+    color:#aeb7c7;
+    font-size:20px;
+    line-height:1.35;
+}
+.grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:22px;
+}
+.stat{
+    background:#10151c;
+    border:1px solid #26303d;
+    border-radius:25px;
+    padding:28px;
+}
+.label{color:#aeb7c7;font-size:19px;margin-bottom:15px}
+.value{font-size:31px;font-weight:700}
+.negative{color:#f06c87}
+.positive{color:#51d69b}
+input{
+    width:100%;
+    background:#090d12;
+    color:#f4f6f8;
+    border:1px solid #354154;
+    border-radius:17px;
+    padding:19px 20px;
+    font-size:20px;
+    margin-bottom:16px;
+    outline:none;
+}
+button{
+    width:100%;
+    border:0;
+    border-radius:17px;
+    padding:19px;
+    background:#2d67e8;
+    color:white;
+    font-size:20px;
+    font-weight:700;
+    cursor:pointer;
+}
+button.secondary{
+    background:#242c38;
+}
+button.danger{
+    background:#6b2637;
+}
+.asset{
+    border:1px solid #293442;
+    border-radius:18px;
+    padding:18px;
+    margin-top:14px;
+    background:#0c1117;
+}
+.asset-top{
+    display:flex;
+    justify-content:space-between;
+    gap:15px;
+}
+.asset-symbol{font-size:23px;font-weight:700}
+.small{color:#9fa9b8;font-size:15px;margin-top:5px}
+.message{
+    margin-top:15px;
+    color:#aeb7c7;
+    font-size:17px;
+    line-height:1.4;
+}
+.footer{
+    text-align:center;
+    color:#707b8c;
+    padding:10px 0 30px;
+}
+@media(max-width:600px){
+    .container{padding:22px}
+    .grid{gap:16px}
+    .hero,.card,.stat{padding:24px}
+    h1{font-size:31px}
+    .subtitle{font-size:18px}
+    .value{font-size:27px}
+}
 </style>
 </head>
 <body>
 <div class="container">
-<header>
-<h1>📈 Invest Analyzer Pro</h1>
-<div class="sub">Carteira + análise de ações com dados do Yahoo Finance</div>
-</header>
+
+<div class="hero">
+    <h1>📈 Invest Analyzer Pro</h1>
+    <div class="subtitle">
+        Carteira + preços de ações com dados do Yahoo Finance
+    </div>
+</div>
 
 <div class="grid">
-<div class="card"><div class="label">Patrimônio</div><div id="patrimonio" class="value">R$ 0,00</div></div>
-<div class="card"><div class="label">Investido</div><div id="investido" class="value">R$ 0,00</div></div>
-<div class="card"><div class="label">Lucro / Prejuízo</div><div id="lucro" class="value">R$ 0,00</div></div>
-<div class="card"><div class="label">Rentabilidade</div><div id="rentabilidade" class="value">0,00%</div></div>
+    <div class="stat">
+        <div class="label">Patrimônio</div>
+        <div id="value">R$ 0,00</div>
+    </div>
+    <div class="stat">
+        <div class="label">Investido</div>
+        <div id="invested">R$ 0,00</div>
+    </div>
+    <div class="stat">
+        <div class="label">Lucro / Prejuízo</div>
+        <div id="profit">R$ 0,00</div>
+    </div>
+    <div class="stat">
+        <div class="label">Rentabilidade</div>
+        <div id="profitability">0,00%</div>
+    </div>
 </div>
 
-<div class="section">
-<h2>➕ Adicionar ativo</h2>
-<div class="form">
-<input id="symbol" placeholder="Ticker: AAPL, MSFT, NVDA..." autocomplete="off">
-<input id="quantity" type="number" step="any" min="0" placeholder="Quantidade">
-<input id="avg_price" type="number" step="any" min="0" placeholder="Preço médio (USD)">
-<button onclick="addAsset()">Adicionar</button>
-</div>
-<div id="status" class="status"></div>
+<div class="card">
+    <h2>➕ Adicionar ativo</h2>
+
+    <input id="symbol" placeholder="Código — ex.: XPLG11, PETR4 ou AAPL">
+    <input id="quantity" type="number" min="0" step="any" placeholder="Quantidade">
+    <input id="average_price" type="number" min="0" step="any" placeholder="Preço médio">
+
+    <button onclick="addAsset()">Adicionar</button>
+
+    <div id="message" class="message"></div>
 </div>
 
-<div class="section">
-<h2>🔎 Analisar ação</h2>
-<div class="form">
-<input id="analysisSymbol" placeholder="Ex.: AAPL">
-<button onclick="analyze()" style="grid-column:auto">Analisar</button>
-</div>
-<div id="analysisResult" class="result"></div>
+<div class="card">
+    <h2>💼 Minha carteira</h2>
+    <div id="portfolio">Carregando...</div>
 </div>
 
-<div class="section">
-<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-<h2 style="margin-bottom:0">💼 Minha carteira</h2>
-<button class="danger" style="width:auto" onclick="clearPortfolio()">Limpar carteira</button>
+<div class="card">
+    <h2>🔎 Consultar ação</h2>
+    <input id="searchSymbol" placeholder="Ex.: AAPL, MSFT, XPLG11">
+    <button onclick="searchPrice()">Consultar preço</button>
+    <div id="searchResult" class="message"></div>
 </div>
-<div style="overflow-x:auto;margin-top:10px">
-<table>
-<thead><tr><th>Ativo</th><th>Qtd.</th><th>Preço médio</th><th>Atual</th><th>Valor</th><th>Resultado</th><th></th></tr></thead>
-<tbody id="portfolio"></tbody>
-</table>
+
+<div class="footer">
+    Dados de mercado: Yahoo Finance · Cache automático para reduzir bloqueios
 </div>
-</div>
+
 </div>
 
 <script>
-function money(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0)}
-function usd(v){return '$ '+(Number(v)||0).toFixed(2)}
-function pct(v){return (Number(v)||0).toFixed(2)+'%'}
-function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function brl(v){
+    return new Intl.NumberFormat('pt-BR',{
+        style:'currency',
+        currency:'BRL'
+    }).format(Number(v || 0));
+}
+
+function pct(v){
+    return Number(v || 0).toFixed(2).replace('.',',') + '%';
+}
+
+function setProfitClass(el, value){
+    el.className = Number(value) < 0 ? 'value negative' :
+                   Number(value) > 0 ? 'value positive' : 'value';
+}
 
 async function loadPortfolio(){
-  const r=await fetch('/api/portfolio');
-  const d=await r.json();
-  if(!d.ok){document.getElementById('status').textContent=d.error||'Erro';return}
-  document.getElementById('patrimonio').textContent=money(d.summary.market_value_brl);
-  document.getElementById('investido').textContent=money(d.summary.invested_brl);
-  const l=document.getElementById('lucro');
-  l.textContent=money(d.summary.profit_brl);
-  l.className='value '+(d.summary.profit_brl>=0?'positive':'negative');
-  const rr=document.getElementById('rentabilidade');
-  rr.textContent=pct(d.summary.return_pct);
-  rr.className='value '+(d.summary.return_pct>=0?'positive':'negative');
+    try{
+        const response = await fetch('/api/portfolio');
+        const data = await response.json();
 
-  const body=document.getElementById('portfolio');
-  if(!d.items.length){body.innerHTML='<tr><td colspan="7" class="muted">Nenhum ativo cadastrado.</td></tr>';return}
-  body.innerHTML=d.items.map((x,i)=>`
-  <tr>
-    <td><b>${esc(x.symbol)}</b></td>
-    <td>${x.quantity}</td>
-    <td>${usd(x.avg_price)}</td>
-    <td>${x.price===null?'—':usd(x.price)}</td>
-    <td>${money(x.market_value_brl)}</td>
-    <td class="${x.profit>=0?'positive':'negative'}">${money(x.profit_brl)}</td>
-    <td><button class="danger" style="width:auto;padding:7px 10px" onclick="removeAsset(${i})">X</button></td>
-  </tr>`).join('');
+        if(!data.ok){
+            throw new Error(data.error || 'Erro ao carregar carteira.');
+        }
+
+        const s = data.summary || {};
+
+        document.getElementById('value').textContent = brl(s.value);
+        document.getElementById('invested').textContent = brl(s.invested);
+
+        const profit = document.getElementById('profit');
+        profit.textContent = brl(s.profit);
+        setProfitClass(profit, s.profit);
+
+        const profitability = document.getElementById('profitability');
+        profitability.textContent = pct(s.profitability);
+        setProfitClass(profitability, s.profitability);
+
+        const box = document.getElementById('portfolio');
+
+        if(!data.items || data.items.length === 0){
+            box.innerHTML = '<div class="message">Nenhum ativo cadastrado ainda.</div>';
+            return;
+        }
+
+        box.innerHTML = data.items.map(item => {
+            const price = item.current_price == null
+                ? 'Indisponível'
+                : brl(item.current_price);
+
+            const profitClass = Number(item.profit) < 0
+                ? 'negative'
+                : Number(item.profit) > 0
+                    ? 'positive'
+                    : '';
+
+            return `
+                <div class="asset">
+                    <div class="asset-top">
+                        <div>
+                            <div class="asset-symbol">${escapeHtml(item.symbol)}</div>
+                            <div class="small">
+                                ${item.quantity} cotas · PM ${brl(item.average_price)}
+                            </div>
+                        </div>
+                        <div style="text-align:right">
+                            <div>${price}</div>
+                            <div class="${profitClass}">
+                                ${brl(item.profit)}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small">
+                        Fonte: ${escapeHtml(item.price_source || 'Yahoo Finance')}
+                    </div>
+                    ${item.warning ? `<div class="message">${escapeHtml(item.warning)}</div>` : ''}
+                    ${item.error ? `<div class="message">${escapeHtml(item.error)}</div>` : ''}
+                    <button class="danger" style="margin-top:14px"
+                        onclick="removeAsset('${encodeURIComponent(item.yahoo_symbol)}')">
+                        Remover
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+    }catch(error){
+        document.getElementById('portfolio').innerHTML =
+            '<div class="message">Erro: ' + escapeHtml(error.message) + '</div>';
+    }
+}
+
+function escapeHtml(text){
+    return String(text ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
 }
 
 async function addAsset(){
-  const symbol=document.getElementById('symbol').value.trim().toUpperCase();
-  const quantity=Number(document.getElementById('quantity').value);
-  const avg_price=Number(document.getElementById('avg_price').value);
-  const s=document.getElementById('status');
-  if(!symbol||quantity<=0||avg_price<0){s.textContent='Preencha ticker, quantidade e preço médio.';return}
-  s.textContent='Consultando Yahoo Finance...';
-  const r=await fetch('/api/portfolio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,quantity,avg_price})});
-  const d=await r.json();
-  s.textContent=d.ok?'Ativo adicionado.':(d.error||'Erro ao adicionar.');
-  if(d.ok){document.getElementById('symbol').value='';document.getElementById('quantity').value='';document.getElementById('avg_price').value='';loadPortfolio()}
+    const symbol = document.getElementById('symbol').value.trim();
+    const quantity = document.getElementById('quantity').value;
+    const average_price = document.getElementById('average_price').value;
+    const message = document.getElementById('message');
+
+    if(!symbol || !quantity || !average_price){
+        message.textContent = 'Preencha código, quantidade e preço médio.';
+        return;
+    }
+
+    message.textContent = 'Adicionando ativo...';
+
+    try{
+        const response = await fetch('/api/portfolio/add',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+                symbol,
+                quantity,
+                average_price
+            })
+        });
+
+        const data = await response.json();
+
+        if(!data.ok){
+            throw new Error(data.error || 'Não foi possível adicionar.');
+        }
+
+        message.textContent = data.message;
+
+        document.getElementById('symbol').value = '';
+        document.getElementById('quantity').value = '';
+        document.getElementById('average_price').value = '';
+
+        renderFromData(data);
+
+    }catch(error){
+        message.textContent = error.message;
+    }
 }
-async function removeAsset(i){
-  await fetch('/api/portfolio/'+i,{method:'DELETE'});
-  loadPortfolio();
+
+async function removeAsset(symbol){
+    try{
+        const response = await fetch('/api/portfolio/remove',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+                symbol:decodeURIComponent(symbol)
+            })
+        });
+
+        const data = await response.json();
+
+        if(!data.ok){
+            throw new Error(data.error || 'Erro ao remover.');
+        }
+
+        renderFromData(data);
+    }catch(error){
+        document.getElementById('message').textContent = error.message;
+    }
 }
-async function clearPortfolio(){
-  if(!confirm('Deseja realmente limpar a carteira?'))return;
-  await fetch('/api/portfolio',{method:'DELETE'});
-  loadPortfolio();
+
+function renderFromData(data){
+    const s = data.summary || {};
+
+    document.getElementById('value').textContent = brl(s.value);
+    document.getElementById('invested').textContent = brl(s.invested);
+
+    const profit = document.getElementById('profit');
+    profit.textContent = brl(s.profit);
+    setProfitClass(profit, s.profit);
+
+    const profitability = document.getElementById('profitability');
+    profitability.textContent = pct(s.profitability);
+    setProfitClass(profitability, s.profitability);
+
+    loadPortfolio();
 }
-async function analyze(){
-  const symbol=document.getElementById('analysisSymbol').value.trim().toUpperCase();
-  const box=document.getElementById('analysisResult');
-  if(!symbol){box.style.display='block';box.innerHTML='<span class="negative">Digite um ticker.</span>';return}
-  box.style.display='block';box.innerHTML='Consultando dados...';
-  const r=await fetch('/api/analyze/'+encodeURIComponent(symbol));
-  const d=await r.json();
-  if(!d.ok){box.innerHTML='<span class="negative">'+esc(d.error||'Não foi possível analisar.')+'</span>';return}
-  const x=d.data;
-  box.innerHTML=`
-  <div style="margin-bottom:12px"><b>${esc(x.symbol)}</b> — ${esc(x.name||'Empresa não identificada')}
-  <span class="badge">${esc(x.currency||'USD')}</span></div>
-  <div class="metrics">
-    <div class="metric">Preço atual<b>${usd(x.price)}</b></div>
-    <div class="metric">Variação 1D<b class="${x.change_pct>=0?'positive':'negative'}">${pct(x.change_pct)}</b></div>
-    <div class="metric">P/L<b>${x.pe===null?'—':Number(x.pe).toFixed(2)}</b></div>
-    <div class="metric">Dividend Yield<b>${x.dividend_yield===null?'—':pct(x.dividend_yield)}</b></div>
-    <div class="metric">Market Cap<b>${x.market_cap===null?'—':Number(x.market_cap).toLocaleString('en-US')}</b></div>
-    <div class="metric">52 semanas<b>${x.low52===null?'—':usd(x.low52)} — ${x.high52===null?'—':usd(x.high52)}</b></div>
-  </div>
-  <p class="muted" style="margin-bottom:0">${esc(x.comment)}</p>`;
+
+async function searchPrice(){
+    const symbol = document.getElementById('searchSymbol').value.trim();
+    const result = document.getElementById('searchResult');
+
+    if(!symbol){
+        result.textContent = 'Informe um código de ação.';
+        return;
+    }
+
+    result.textContent = 'Consultando Yahoo Finance...';
+
+    try{
+        const response = await fetch('/api/price/' + encodeURIComponent(symbol));
+        const data = await response.json();
+
+        if(!data.ok){
+            throw new Error(data.error || 'Preço indisponível.');
+        }
+
+        result.innerHTML =
+            '<strong>' + escapeHtml(data.symbol) + '</strong><br>' +
+            'Preço: <strong>' + brl(data.price) + '</strong><br>' +
+            'Fonte: ' + escapeHtml(data.source || 'Yahoo Finance');
+
+        if(data.warning){
+            result.innerHTML += '<br>' + escapeHtml(data.warning);
+        }
+
+    }catch(error){
+        result.textContent = error.message;
+    }
 }
+
 loadPortfolio();
 </script>
 </body>
 </html>
 """
 
-def clean_number(value):
-    try:
-        value = float(value)
-        if not math.isfinite(value):
-            return None
-        return value
-    except Exception:
-        return None
-
-def brl_rate():
-    """USD/BRL rate. Falls back safely if Yahoo is temporarily unavailable."""
-    try:
-        t = yf.Ticker("USDBRL=X")
-        hist = t.history(period="2d", auto_adjust=False)
-        if hist is not None and not hist.empty:
-            value = clean_number(hist["Close"].dropna().iloc[-1])
-            if value and value > 0:
-                return value
-    except Exception:
-        pass
-    return 5.50
-
-def get_quote(symbol):
-    symbol = symbol.strip().upper()
-    if not symbol:
-        raise ValueError("Informe um ticker.")
-
-    ticker = yf.Ticker(symbol)
-    hist = ticker.history(period="5d", auto_adjust=False)
-
-    if hist is None or hist.empty:
-        raise ValueError(f"Não encontrei dados para {symbol}. Use um ticker válido, como AAPL ou MSFT.")
-
-    close = hist["Close"].dropna()
-    price = clean_number(close.iloc[-1])
-    previous = clean_number(close.iloc[-2]) if len(close) >= 2 else price
-
-    if price is None:
-        raise ValueError(f"O Yahoo Finance não retornou preço para {symbol}.")
-
-    change_pct = ((price / previous) - 1) * 100 if previous else 0.0
-
-    info = {}
-    try:
-        info = ticker.info or {}
-    except Exception:
-        info = {}
-
-    name = info.get("longName") or info.get("shortName") or symbol
-    currency = info.get("currency") or "USD"
-    pe = clean_number(info.get("trailingPE"))
-    div = clean_number(info.get("dividendYield"))
-    if div is not None and div < 1:
-        div *= 100
-
-    market_cap = clean_number(info.get("marketCap"))
-    low52 = clean_number(info.get("fiftyTwoWeekLow"))
-    high52 = clean_number(info.get("fiftyTwoWeekHigh"))
-
-    return {
-        "symbol": symbol,
-        "name": name,
-        "currency": currency,
-        "price": price,
-        "previous": previous,
-        "change_pct": change_pct,
-        "pe": pe,
-        "dividend_yield": div,
-        "market_cap": market_cap,
-        "low52": low52,
-        "high52": high52,
-    }
-
-def get_portfolio():
-    return session.get("portfolio", [])
-
-def save_portfolio(items):
-    session["portfolio"] = items
-    session.modified = True
 
 @app.get("/")
 def home():
     return render_template_string(HTML)
 
-@app.get("/health")
-def health():
-    return jsonify({"status": "ok", "service": "invest-analyzer-pro"})
 
-@app.get("/api/search")
-def search():
-    q = request.args.get("q", "").strip()
-    if not q:
-        return jsonify({"ok": True, "results": []})
-
-    try:
-        r = requests.get(
-            "https://query1.finance.yahoo.com/v1/finance/search",
-            params={"q": q, "quotesCount": 8, "newsCount": 0},
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=8,
-        )
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in data.get("quotes", []):
-            symbol = item.get("symbol")
-            if symbol:
-                results.append({
-                    "symbol": symbol,
-                    "name": item.get("longname") or item.get("shortname") or symbol,
-                    "exchange": item.get("exchange"),
-                    "type": item.get("quoteType"),
-                })
-        return jsonify({"ok": True, "results": results})
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Busca indisponível no momento: {e}"}), 502
-
-@app.get("/api/quote/<symbol>")
-def quote(symbol):
-    try:
-        return jsonify({"ok": True, "data": get_quote(symbol)})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-@app.get("/api/analyze/<symbol>")
-def analyze(symbol):
-    try:
-        data = get_quote(symbol)
-        pe = data["pe"]
-        div = data["dividend_yield"]
-        if pe is not None and pe > 0 and pe < 15:
-            comment = "P/L relativamente baixo, mas deve ser comparado com o setor e com o crescimento da empresa."
-        elif pe is not None and pe > 30:
-            comment = "P/L elevado. Isso pode indicar expectativas altas de crescimento; compare com o setor."
-        elif div is not None and div >= 3:
-            comment = "Dividend Yield relevante. Verifique histórico de dividendos, payout e sustentabilidade."
-        else:
-            comment = "Use os indicadores como ponto de partida e combine-os com fundamentos e análise de risco."
-        data["comment"] = comment
-        return jsonify({"ok": True, "data": data})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-@app.get("/api/portfolio")
-def portfolio_get():
-    items = get_portfolio()
-    rate = brl_rate()
-    output = []
-    invested_brl = 0.0
-    market_value_brl = 0.0
-
-    for item in items:
-        qty = float(item["quantity"])
-        avg = float(item["avg_price"])
-        invested_usd = qty * avg
-        invested = invested_usd * rate
-
-        try:
-            q = get_quote(item["symbol"])
-            price = q["price"]
-            market_usd = qty * price
-            market_brl = market_usd * rate
-            profit_usd = market_usd - invested_usd
-            profit_brl = profit_usd * rate
-        except Exception:
-            price = None
-            market_brl = invested
-            profit_brl = 0.0
-
-        invested_brl += invested
-        market_value_brl += market_brl
-
-        output.append({
-            "symbol": item["symbol"],
-            "quantity": qty,
-            "avg_price": avg,
-            "price": price,
-            "market_value_brl": market_brl,
-            "profit_brl": profit_brl,
-        })
-
-    profit_brl = market_value_brl - invested_brl
-    return jsonify({
-        "ok": True,
-        "usd_brl": rate,
-        "items": output,
-        "summary": {
-            "invested_brl": invested_brl,
-            "market_value_brl": market_value_brl,
-            "profit_brl": profit_brl,
-            "return_pct": (profit_brl / invested_brl * 100) if invested_brl else 0.0,
-        },
-    })
-
-@app.post("/api/portfolio")
-def portfolio_add():
-    data = request.get_json(silent=True) or {}
-    symbol = str(data.get("symbol", "")).strip().upper()
-    quantity = clean_number(data.get("quantity"))
-    avg_price = clean_number(data.get("avg_price"))
-
-    if not symbol:
-        return jsonify({"ok": False, "error": "Informe o ticker."}), 400
-    if quantity is None or quantity <= 0:
-        return jsonify({"ok": False, "error": "Quantidade inválida."}), 400
-    if avg_price is None or avg_price < 0:
-        return jsonify({"ok": False, "error": "Preço médio inválido."}), 400
-
-    try:
-        get_quote(symbol)
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    items = get_portfolio()
-    items.append({
-        "symbol": symbol,
-        "quantity": quantity,
-        "avg_price": avg_price,
-    })
-    save_portfolio(items)
-    return jsonify({"ok": True, "message": "Ativo adicionado."})
-
-@app.delete("/api/portfolio/<int:index>")
-def portfolio_remove(index):
-    items = get_portfolio()
-    if index < 0 or index >= len(items):
-        return jsonify({"ok": False, "error": "Ativo não encontrado."}), 404
-    items.pop(index)
-    save_portfolio(items)
-    return jsonify({"ok": True})
-
-@app.delete("/api/portfolio")
-def portfolio_clear():
-    save_portfolio([])
-    return jsonify({"ok": True})
-
-@app.errorhandler(404)
-def not_found(e):
-    if request.path.startswith("/api/"):
-        return jsonify({"ok": False, "error": "Endpoint não encontrado."}), 404
-    return "Página não encontrada.", 404
-
-@app.errorhandler(500)
-def server_error(e):
-    if request.path.startswith("/api/"):
-        return jsonify({"ok": False, "error": "Erro interno do servidor."}), 500
-    return "Erro interno do servidor.", 500
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "10000"))
