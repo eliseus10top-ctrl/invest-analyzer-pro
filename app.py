@@ -18,7 +18,7 @@ import html
 import uuid
 
 # ============================================================
-# 🚀 CONFIGURAÇÕES — PREENCHA AQUI!
+# 🚀 CONFIGURAÇÕES — JÁ PREENCHIDAS PARA VOCÊ!
 # ============================================================
 
 app = Flask(__name__)
@@ -29,14 +29,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///:memory:"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# 👇 👇 👇 TROQUE AQUI PELOS SEUS DADOS!
+# 👇 SEUS DADOS — JÁ CONFIGURADOS!
 PLANO_VALOR = 10.00
 LIMITE_GRATIS = 1  # 1 uso grátis
 
-# LINK DE PAGAMENTO — Mercado Pago, PicPay, Stripe, etc.
-LINK_PAGAMENTO = "https://mpago.la/SEU-CODIGO-AQUI"
-# LINK DO WHATSAPP DE SUPORTE
-LINK_WHATSAPP_SUPORTE = "https://wa.me/5577999999999?text=Quero%20ativar%20minha%20assinatura!"
+# ✅ PAGAMENTO — PIX COM SUA CHAVE!
+LINK_PAGAMENTO = "https://wa.me/5577999999999?text=Ol%C3%A1!%20Quero%20assinar%20o%20plano%20de%20R%2410%2C00%2Fm%C3%AAs.%20Minha%20chave%20Pix%3A%20eliseusud3%40gmail.com.%20Pode%20confirmar%3F"
+# ✅ WHATSAPP DE SUPORTE
+LINK_WHATSAPP_SUPORTE = "https://wa.me/5577999999999?text=Ol%C3%A1!%20Preciso%20de%20ajuda%20com%20a%20assinatura!"
 
 # ============================================================
 # 📊 MODELO DO BANCO DE DADOS
@@ -163,6 +163,9 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
 }
 .unlock-form{margin-top:20px;padding:16px;background:#f8f6f0;border-radius:12px}
 .unlock-form input{margin-bottom:10px}
+.pix-key{background:#fff8e6;border:1px solid #f0c94f;border-radius:12px;padding:12px;margin:12px 0;
+  font-family:monospace;font-size:13px;color:#856404;word-break:break-all;
+}
 .social-proof{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;
   padding:20px 0;border-top:1px solid var(--line);margin-top:30px;text-align:center;
 }
@@ -192,6 +195,13 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
       <p style="color:var(--muted);font-size:15px">Você usou sua proposta grátis!</p>
       <div class="plan-price">R$ 10,00<span>/mês</span></div>
       <p style="font-size:14px;color:#666;margin:-8px 0 16px">Ilimitado • Sem fidelidade</p>
+      
+      <div style="background:#fff8e6;border:1px solid #f0c94f;border-radius:12px;padding:14px;margin:16px 0;">
+        <p style="font-size:14px;font-weight:700;color:#856404;margin:0 0 8px">💳 Pague via Pix:</p>
+        <div class="pix-key">eliseusud3@gmail.com</div>
+        <p style="font-size:12px;color:#856404;margin:8px 0 0">Valor: R$ 10,00 — Após pagar, volte e ative sua conta!</p>
+      </div>
+      
       <ul class="plan-features">
         <li>Propostas ILIMITADAS</li>
         <li>PDF Premium profissional</li>
@@ -199,16 +209,19 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
         <li>Envio direto WhatsApp</li>
         <li>Suporte prioritário</li>
       </ul>
+      
       <a href="{{ link_pagamento }}" target="_blank" style="text-decoration:none">
-        <button class="plan-btn">💳 Assinar Agora — R$ 10,00</button>
+        <button class="plan-btn">💳 Falar para Pagar</button>
       </a>
+      
       <div class="unlock-form">
-        <p style="font-size:14px;margin:0 0 10px;color:#555">Já pagou? Informe seu e-mail:</p>
+        <p style="font-size:14px;margin:0 0 10px;color:#555">✅ Já pagou? Informe seu e-mail:</p>
         <form method="post" action="/ativar-assinatura">
           <input type="text" name="codigo" placeholder="Seu e-mail ou comprovante" required>
           <button type="submit" class="secondary" style="width:100%;margin-top:8px">✅ Ativar Conta</button>
         </form>
       </div>
+      
       <p style="font-size:12px;color:#888;margin-top:16px">Pagamento via Pix. Acesso imediato após confirmação.<br>
         Dúvidas? <a href="{{ link_whatsapp_suporte }}" target="_blank" style="color:var(--gold);font-weight:600">Falar com suporte</a></p>
     </div>
@@ -316,7 +329,7 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
     </div>
 
     <div class="terms">
-      Plano R$10,00/mês — propostas ilimitadas. Sem fidelidade. Pagamento seguro via Pix. © 2026 Proposta Exclusiva
+      Plano R$10,00/mês — propostas ilimitadas. Sem fidelidade. Pagamento via Pix. © 2026 Proposta Exclusiva
     </div>
   </div>
 </div>
@@ -668,33 +681,4 @@ def whatsapp():
             link_whatsapp_suporte=LINK_WHATSAPP_SUPORTE), 400
 
     text = (
-        f"Olá, {data.get('cliente','')}! 👋\n"
-        f"Segue a proposta da {data.get('empresa','')} para: {data.get('servico','')}.\n\n"
-        f"💰 Valor total: {money_br(total)}\n"
-        f"📅 Prazo: {data.get('prazo','a combinar')}\n"
-        f"⏳ Validade: {data.get('validade','7 dias')}\n"
-        f"🛡️ Garantia: {data.get('garantia','a combinar')}\n\n"
-        f"Agradeço pela confiança! Fico à disposição. 🤝"
-    )
-    return redirect("https://wa.me/" + phone + "?text=" + quote(text))
-
-@app.route("/ativar-assinatura", methods=["POST"])
-def ativar_assinatura():
-    user = get_or_create_user()
-    user.is_subscribed = True
-    user.subscription_expires = datetime.utcnow() + timedelta(days=30)
-    db.session.commit()
-    flash("✅ Assinatura ativada! Agora você pode gerar propostas ilimitadas!")
-    return redirect("/")
-
-# ============================================================
-# 📊 CRIAR TABELAS — CORRIGIDO E FUNCIONANDO!
-# ============================================================
-
-with app.app_context():
-    db.create_all()
-    print("✅ Tabelas criadas com sucesso!")
-
-# ============================================================
-# ▶️ EXECUÇÃO — COMPLETO!
-# =================================================
+        f"Olá, {data.get('cliente','')
