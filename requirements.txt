@@ -5,4 +5,3 @@ yfinance>=0.2.36
 pandas>=2.0
 numpy>=1.24
 plotly>=5.15
-
