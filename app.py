@@ -3145,7 +3145,7 @@ def get_portfolio():
 
         try:
 
-            analysis =
+        
                 analyze_asset(
                     item["ticker"]
                 )
