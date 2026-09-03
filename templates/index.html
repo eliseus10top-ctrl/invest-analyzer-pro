@@ -1,1 +1,1632 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>INVEST ANALYZER 5.0</title>
+
+    <meta name="description"
+          content="INVEST ANALYZER 5.0 - Análise inteligente de ações, FIIs e carteira de investimentos">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #0b1120;
+            color: #ffffff;
+            min-height: 100vh;
+        }
+
+        header {
+            background: linear-gradient(135deg, #111827, #172554);
+            padding: 25px 15px;
+            text-align: center;
+            border-bottom: 1px solid #263451;
+        }
+
+        header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        header p {
+            color: #aebbd1;
+            font-size: 14px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: auto;
+            padding: 20px 15px 50px;
+        }
+
+        .search-box {
+            background: #111827;
+            border: 1px solid #263451;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .search-box h2 {
+            font-size: 19px;
+            margin-bottom: 15px;
+        }
+
+        .search-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex: 1;
+            background: #0b1120;
+            color: white;
+            border: 1px solid #34425d;
+            border-radius: 10px;
+            padding: 14px;
+            font-size: 16px;
+            outline: none;
+            text-transform: uppercase;
+        }
+
+        input:focus {
+            border-color: #60a5fa;
+        }
+
+        button {
+            border: none;
+            border-radius: 10px;
+            padding: 13px 18px;
+            background: #2563eb;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button.secondary {
+            background: #374151;
+        }
+
+        button.success {
+            background: #15803d;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: #111827;
+            border: 1px solid #263451;
+            border-radius: 15px;
+            padding: 18px;
+        }
+
+        .card-title {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .card-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .section {
+            background: #111827;
+            border: 1px solid #263451;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 18px;
+        }
+
+        .asset-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .ticker {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .asset-name {
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        .badge {
+            padding: 8px 13px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+            background: #334155;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .metric {
+            background: #0b1120;
+            border: 1px solid #263451;
+            border-radius: 12px;
+            padding: 15px;
+        }
+
+        .metric span {
+            display: block;
+            color: #94a3b8;
+            font-size: 12px;
+            margin-bottom: 7px;
+        }
+
+        .metric strong {
+            font-size: 19px;
+        }
+
+        .conclusion {
+            margin-top: 20px;
+            padding: 18px;
+            border-radius: 12px;
+            background: #172033;
+            border-left: 5px solid #64748b;
+        }
+
+        .conclusion h3 {
+            margin-bottom: 8px;
+        }
+
+        .conclusion p {
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .portfolio-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .portfolio-card {
+            background: #0b1120;
+            border: 1px solid #263451;
+            border-radius: 12px;
+            padding: 17px;
+        }
+
+        .portfolio-card span {
+            display: block;
+            color: #94a3b8;
+            font-size: 13px;
+            margin-bottom: 7px;
+        }
+
+        .portfolio-card strong {
+            font-size: 22px;
+        }
+
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 750px;
+        }
+
+        th {
+            text-align: left;
+            color: #94a3b8;
+            font-size: 12px;
+            padding: 13px 10px;
+            border-bottom: 1px solid #334155;
+        }
+
+        td {
+            padding: 14px 10px;
+            border-bottom: 1px solid #1e293b;
+            font-size: 14px;
+        }
+
+        .positive {
+            color: #4ade80;
+        }
+
+        .negative {
+            color: #f87171;
+        }
+
+        .neutral {
+            color: #facc15;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 25px;
+            color: #94a3b8;
+        }
+
+        .spinner {
+            width: 35px;
+            height: 35px;
+            border: 4px solid #334155;
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            display: none;
+            background: #3f1d1d;
+            border: 1px solid #7f1d1d;
+            color: #fecaca;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .empty {
+            text-align: center;
+            color: #94a3b8;
+            padding: 25px;
+        }
+
+        footer {
+            text-align: center;
+            color: #64748b;
+            padding: 25px 15px;
+            font-size: 12px;
+        }
+
+        @media (max-width: 900px) {
+            .dashboard {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .metrics {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .portfolio-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            header h1 {
+                font-size: 23px;
+            }
+
+            .container {
+                padding: 15px 10px 40px;
+            }
+
+            .search-row {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .dashboard {
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+
+            .card {
+                padding: 14px;
+            }
+
+            .card-value {
+                font-size: 19px;
+            }
+
+            .asset-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .ticker {
+                font-size: 27px;
+            }
+
+            .metrics {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .metric {
+                padding: 12px;
+            }
+
+            .portfolio-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .section {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>📊 INVEST ANALYZER 5.0</h1>
+    <p>Análise inteligente de ações, FIIs e carteira de investimentos</p>
+</header>
+
+<main class="container">
+
+    <!-- PESQUISA -->
+    <section class="search-box">
+
+        <h2>🔎 Pesquisar ativo</h2>
+
+        <div class="search-row">
+            <input
+                id="tickerInput"
+                type="text"
+                placeholder="Digite o ticker. Ex: PETR4"
+                autocomplete="off"
+            >
+
+            <button onclick="analisarAtivo()">
+                Analisar
+            </button>
+        </div>
+
+    </section>
+
+    <!-- ERRO -->
+    <div id="errorBox" class="error"></div>
+
+    <!-- LOADING -->
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Consultando dados do ativo...</p>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section class="dashboard">
+
+        <div class="card">
+            <div class="card-title">Patrimônio</div>
+            <div id="patrimonio" class="card-value">R$ 0,00</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Lucro / Prejuízo</div>
+            <div id="lucro" class="card-value">R$ 0,00</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Rentabilidade</div>
+            <div id="rentabilidade" class="card-value">0,00%</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Ativos</div>
+            <div id="totalAtivos" class="card-value">0</div>
+        </div>
+
+    </section>
+
+    <!-- FICHA DO ATIVO -->
+    <section id="assetSection" class="section" style="display:none;">
+
+        <div class="asset-header">
+
+            <div>
+                <div id="assetTicker" class="ticker">---</div>
+                <div id="assetName" class="asset-name">
+                    Ativo selecionado
+                </div>
+            </div>
+
+            <div id="assetConclusionBadge" class="badge">
+                Aguardando análise
+            </div>
+
+        </div>
+
+        <div class="metrics">
+
+            <div class="metric">
+                <span>Preço atual</span>
+                <strong id="preco">---</strong>
+            </div>
+
+            <div class="metric">
+                <span>Dividend Yield</span>
+                <strong id="dy">---</strong>
+            </div>
+
+            <div class="metric">
+                <span>Nota</span>
+                <strong id="nota">---</strong>
+            </div>
+
+            <div class="metric">
+                <span>Risco</span>
+                <strong id="risco">---</strong>
+            </div>
+
+            <div class="metric">
+                <span>P/L</span>
+                <strong id="pl">---</strong>
+            </div>
+
+            <div class="metric">
+                <span>P/VP</span>
+                <strong id="pvp">---</strong>
+            </div>
+
+            <div class="metric">
+                <span>ROE</span>
+                <strong id="roe">---</strong>
+            </div>
+
+            <div class="metric">
+                <span>Dívida</span>
+                <strong id="divida">---</strong>
+            </div>
+
+        </div>
+
+        <div class="conclusion">
+
+            <h3 id="conclusaoTitulo">
+                📌 Conclusão
+            </h3>
+
+            <p id="conclusaoTexto">
+                Pesquise um ativo para visualizar a análise.
+            </p>
+
+        </div>
+
+    </section>
+
+    <!-- BOTÕES -->
+    <section class="section">
+
+        <h2>⚡ Ações rápidas</h2>
+
+        <div class="actions">
+
+            <button onclick="atualizarAnalise()">
+                🔄 Atualizar análise
+            </button>
+
+            <button class="secondary" onclick="carregarCategoria('acoes')">
+                📈 Ver ações
+            </button>
+
+            <button class="secondary" onclick="carregarCategoria('fiis')">
+                🏢 Ver FIIs
+            </button>
+
+            <button class="secondary" onclick="carregarCategoria('oportunidades')">
+                💎 Ver oportunidades
+            </button>
+
+            <button class="secondary" onclick="carregarCategoria('ranking')">
+                🏆 Ver ranking
+            </button>
+
+        </div>
+
+    </section>
+
+    <!-- CARTEIRA -->
+    <section class="section">
+
+        <h2>💼 Minha carteira</h2>
+
+        <div class="portfolio-grid">
+
+            <div class="portfolio-card">
+                <span>Valor investido</span>
+                <strong id="valorInvestido">R$ 0,00</strong>
+            </div>
+
+            <div class="portfolio-card">
+                <span>Patrimônio atual</span>
+                <strong id="valorAtual">R$ 0,00</strong>
+            </div>
+
+            <div class="portfolio-card">
+                <span>Resultado</span>
+                <strong id="resultadoCarteira">R$ 0,00</strong>
+            </div>
+
+            <div class="portfolio-card">
+                <span>Rentabilidade</span>
+                <strong id="rentabilidadeCarteira">0,00%</strong>
+            </div>
+
+            <div class="portfolio-card">
+                <span>Total de ativos</span>
+                <strong id="quantidadeAtivos">0</strong>
+            </div>
+
+            <div class="portfolio-card">
+                <span>Dividendos</span>
+                <strong id="dividendos">R$ 0,00</strong>
+            </div>
+
+        </div>
+
+    </section>
+
+    <!-- TABELA -->
+    <section class="section">
+
+        <h2>📋 Ativos da carteira</h2>
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Quantidade</th>
+                        <th>Preço médio</th>
+                        <th>Preço atual</th>
+                        <th>Patrimônio</th>
+                        <th>Resultado</th>
+                        <th>Resultado %</th>
+                    </tr>
+
+                </thead>
+
+                <tbody id="portfolioTable">
+
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty">
+                                Nenhum ativo cadastrado.
+                            </div>
+                        </td>
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+    <!-- RESULTADOS DE CATEGORIA -->
+    <section id="categorySection" class="section" style="display:none;">
+
+        <h2 id="categoryTitle">
+            Resultados
+        </h2>
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Preço</th>
+                        <th>Dividend Yield</th>
+                        <th>Nota</th>
+                        <th>Risco</th>
+                        <th>Conclusão</th>
+                    </tr>
+
+                </thead>
+
+                <tbody id="categoryTable">
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+</main>
+
+<footer>
+    INVEST ANALYZER 5.0 © 2026 —
+    Ferramenta de análise de investimentos.
+    <br>
+    As informações apresentadas não constituem recomendação de investimento.
+</footer>
+
+
+<script>
+
+    /*
+    ============================================================
+    INVEST ANALYZER 5.0
+    FRONTEND FLASK / RENDER
+    ============================================================
+    */
+
+    function moeda(valor) {
+
+        if (
+            valor === null ||
+            valor === undefined ||
+            valor === "" ||
+            isNaN(Number(valor))
+        ) {
+            return "R$ 0,00";
+        }
+
+        return Number(valor).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL"
+        });
+    }
+
+
+    function numero(valor, casas = 2) {
+
+        if (
+            valor === null ||
+            valor === undefined ||
+            valor === "" ||
+            isNaN(Number(valor))
+        ) {
+            return "0,00";
+        }
+
+        return Number(valor).toLocaleString("pt-BR", {
+            minimumFractionDigits: casas,
+            maximumFractionDigits: casas
+        });
+    }
+
+
+    function percentual(valor) {
+
+        if (
+            valor === null ||
+            valor === undefined ||
+            valor === "" ||
+            isNaN(Number(valor))
+        ) {
+            return "0,00%";
+        }
+
+        return Number(valor).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }) + "%";
+    }
+
+
+    function mostrarLoading(mostrar) {
+
+        document.getElementById("loading").style.display =
+            mostrar ? "block" : "none";
+
+    }
+
+
+    function mostrarErro(mensagem) {
+
+        const box = document.getElementById("errorBox");
+
+        box.textContent = mensagem;
+        box.style.display = "block";
+
+    }
+
+
+    function esconderErro() {
+
+        document.getElementById("errorBox").style.display = "none";
+
+    }
+
+
+    function valor(data, nomes, padrao = null) {
+
+        for (const nome of nomes) {
+
+            if (
+                data &&
+                data[nome] !== undefined &&
+                data[nome] !== null
+            ) {
+                return data[nome];
+            }
+
+        }
+
+        return padrao;
+
+    }
+
+
+    async function analisarAtivo() {
+
+        esconderErro();
+
+        const input =
+            document.getElementById("tickerInput");
+
+        const ticker =
+            input.value.trim().toUpperCase();
+
+        if (!ticker) {
+
+            mostrarErro(
+                "Digite um ticker para realizar a análise."
+            );
+
+            input.focus();
+
+            return;
+        }
+
+        mostrarLoading(true);
+
+        try {
+
+            /*
+             * Rota principal do Flask.
+             */
+
+            const resposta = await fetch(
+                "/api/analisar?ticker=" +
+                encodeURIComponent(ticker)
+            );
+
+            if (!resposta.ok) {
+
+                throw new Error(
+                    "O servidor retornou erro " +
+                    resposta.status
+                );
+
+            }
+
+            const data = await resposta.json();
+
+            preencherAtivo(data, ticker);
+
+        }
+
+        catch (erro) {
+
+            console.error(erro);
+
+            mostrarErro(
+                "Não foi possível analisar o ativo. " +
+                "Verifique se o Flask está funcionando e tente novamente."
+            );
+
+        }
+
+        finally {
+
+            mostrarLoading(false);
+
+        }
+
+    }
+
+
+    function preencherAtivo(data, ticker) {
+
+        document.getElementById(
+            "assetSection"
+        ).style.display = "block";
+
+
+        const simbolo =
+            valor(data, ["ticker", "symbol"], ticker);
+
+        const nome =
+            valor(
+                data,
+                ["nome", "name", "empresa"],
+                "Ativo selecionado"
+            );
+
+
+        const preco =
+            valor(
+                data,
+                ["preco", "preco_atual", "current_price", "price"],
+                0
+            );
+
+
+        const dy =
+            valor(
+                data,
+                ["dividend_yield", "dy", "Dividend_Yield"],
+                0
+            );
+
+
+        const nota =
+            valor(
+                data,
+                ["nota", "score", "rating"],
+                0
+            );
+
+
+        const risco =
+            valor(
+                data,
+                ["risco", "risk"],
+                "N/D"
+            );
+
+
+        const pl =
+            valor(
+                data,
+                ["pl", "p_l", "P_L"],
+                0
+            );
+
+
+        const pvp =
+            valor(
+                data,
+                ["pvp", "p_vp", "P_VP"],
+                0
+            );
+
+
+        const roe =
+            valor(
+                data,
+                ["roe", "ROE"],
+                0
+            );
+
+
+        const divida =
+            valor(
+                data,
+                ["divida", "divida_liquida", "debt"],
+                "N/D"
+            );
+
+
+        const conclusao =
+            valor(
+                data,
+                [
+                    "conclusao",
+                    "conclusion",
+                    "recomendacao",
+                    "recommendation"
+                ],
+                "N/D"
+            );
+
+
+        const texto =
+            valor(
+                data,
+                [
+                    "texto_conclusao",
+                    "conclusao_texto",
+                    "descricao",
+                    "description"
+                ],
+                "Análise concluída."
+            );
+
+
+        document.getElementById(
+            "assetTicker"
+        ).textContent = simbolo;
+
+
+        document.getElementById(
+            "assetName"
+        ).textContent = nome;
+
+
+        document.getElementById(
+            "preco"
+        ).textContent = moeda(preco);
+
+
+        document.getElementById(
+            "dy"
+        ).textContent = percentual(dy);
+
+
+        document.getElementById(
+            "nota"
+        ).textContent = numero(nota);
+
+
+        document.getElementById(
+            "risco"
+        ).textContent = risco;
+
+
+        document.getElementById(
+            "pl"
+        ).textContent = numero(pl);
+
+
+        document.getElementById(
+            "pvp"
+        ).textContent = numero(pvp);
+
+
+        document.getElementById(
+            "roe"
+        ).textContent = percentual(roe);
+
+
+        document.getElementById(
+            "divida"
+        ).textContent =
+            typeof divida === "number"
+                ? numero(divida)
+                : divida;
+
+
+        document.getElementById(
+            "conclusaoTitulo"
+        ).textContent =
+            "📌 " + conclusao;
+
+
+        document.getElementById(
+            "conclusaoTexto"
+        ).textContent = texto;
+
+
+        const badge =
+            document.getElementById(
+                "assetConclusionBadge"
+            );
+
+        badge.textContent = conclusao;
+
+        badge.className = "badge";
+
+
+        const conclusaoTexto =
+            String(conclusao).toLowerCase();
+
+
+        if (
+            conclusaoTexto.includes("favorável") ||
+            conclusaoTexto.includes("favoravel") ||
+            conclusaoTexto.includes("compra") ||
+            conclusaoTexto.includes("positivo")
+        ) {
+
+            badge.classList.add("positive");
+
+        }
+
+        else if (
+            conclusaoTexto.includes("desfavorável") ||
+            conclusaoTexto.includes("desfavoravel") ||
+            conclusaoTexto.includes("venda") ||
+            conclusaoTexto.includes("negativo")
+        ) {
+
+            badge.classList.add("negative");
+
+        }
+
+        else {
+
+            badge.classList.add("neutral");
+
+        }
+
+    }
+
+
+    async function atualizarAnalise() {
+
+        const ticker =
+            document
+                .getElementById("tickerInput")
+                .value
+                .trim()
+                .toUpperCase();
+
+
+        if (!ticker) {
+
+            mostrarErro(
+                "Digite um ticker antes de atualizar."
+            );
+
+            return;
+        }
+
+
+        await analisarAtivo();
+
+    }
+
+
+    async function carregarCategoria(categoria) {
+
+        esconderErro();
+
+        mostrarLoading(true);
+
+        const nomes = {
+
+            acoes: "📈 Ações",
+
+            fiis: "🏢 FIIs",
+
+            oportunidades: "💎 Oportunidades",
+
+            ranking: "🏆 Ranking"
+
+        };
+
+
+        document.getElementById(
+            "categorySection"
+        ).style.display = "block";
+
+
+        document.getElementById(
+            "categoryTitle"
+        ).textContent =
+            nomes[categoria] || "Resultados";
+
+
+        try {
+
+            const resposta = await fetch(
+                "/api/" + categoria
+            );
+
+
+            if (!resposta.ok) {
+
+                throw new Error(
+                    "Erro " + resposta.status
+                );
+
+            }
+
+
+            const data = await resposta.json();
+
+
+            const lista =
+                Array.isArray(data)
+                    ? data
+                    : (
+                        data.ativos ||
+                        data.resultados ||
+                        data.ranking ||
+                        []
+                    );
+
+
+            preencherTabelaCategoria(lista);
+
+        }
+
+        catch (erro) {
+
+            console.error(erro);
+
+            mostrarErro(
+                "Não foi possível carregar os resultados."
+            );
+
+        }
+
+        finally {
+
+            mostrarLoading(false);
+
+        }
+
+    }
+
+
+    function preencherTabelaCategoria(lista) {
+
+        const tbody =
+            document.getElementById(
+                "categoryTable"
+            );
+
+
+        tbody.innerHTML = "";
+
+
+        if (!lista || lista.length === 0) {
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6">
+                        <div class="empty">
+                            Nenhum resultado encontrado.
+                        </div>
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+
+        lista.forEach(item => {
+
+            const ticker =
+                valor(
+                    item,
+                    ["ticker", "symbol"],
+                    "---"
+                );
+
+
+            const preco =
+                valor(
+                    item,
+                    ["preco", "preco_atual", "price"],
+                    0
+                );
+
+
+            const dy =
+                valor(
+                    item,
+                    ["dividend_yield", "dy"],
+                    0
+                );
+
+
+            const nota =
+                valor(
+                    item,
+                    ["nota", "score", "rating"],
+                    0
+                );
+
+
+            const risco =
+                valor(
+                    item,
+                    ["risco", "risk"],
+                    "N/D"
+                );
+
+
+            const conclusao =
+                valor(
+                    item,
+                    ["conclusao", "recomendacao", "recommendation"],
+                    "N/D"
+                );
+
+
+            const tr =
+                document.createElement("tr");
+
+
+            tr.innerHTML = `
+
+                <td>
+                    <strong>${ticker}</strong>
+                </td>
+
+                <td>
+                    ${moeda(preco)}
+                </td>
+
+                <td>
+                    ${percentual(dy)}
+                </td>
+
+                <td>
+                    ${numero(nota)}
+                </td>
+
+                <td>
+                    ${risco}
+                </td>
+
+                <td>
+                    ${conclusao}
+                </td>
+
+            `;
+
+
+            tbody.appendChild(tr);
+
+        });
+
+    }
+
+
+    async function carregarCarteira() {
+
+        try {
+
+            const resposta =
+                await fetch("/api/carteira");
+
+
+            if (!resposta.ok) {
+
+                return;
+
+            }
+
+
+            const data =
+                await resposta.json();
+
+
+            const patrimonio =
+                valor(
+                    data,
+                    [
+                        "patrimonio",
+                        "patrimonio_total",
+                        "valor_atual"
+                    ],
+                    0
+                );
+
+
+            const investido =
+                valor(
+                    data,
+                    [
+                        "valor_investido",
+                        "investido",
+                        "total_investido"
+                    ],
+                    0
+                );
+
+
+            const lucro =
+                valor(
+                    data,
+                    [
+                        "lucro",
+                        "lucro_prejuizo",
+                        "resultado"
+                    ],
+                    0
+                );
+
+
+            const rent =
+                valor(
+                    data,
+                    [
+                        "rentabilidade",
+                        "rentabilidade_total"
+                    ],
+                    0
+                );
+
+
+            const qtd =
+                valor(
+                    data,
+                    [
+                        "total_ativos",
+                        "quantidade_ativos",
+                        "numero_ativos"
+                    ],
+                    0
+                );
+
+
+            const dividendos =
+                valor(
+                    data,
+                    ["dividendos", "dividendos_total"],
+                    0
+                );
+
+
+            document.getElementById(
+                "patrimonio"
+            ).textContent = moeda(patrimonio);
+
+
+            document.getElementById(
+                "lucro"
+            ).textContent = moeda(lucro);
+
+
+            document.getElementById(
+                "rentabilidade"
+            ).textContent = percentual(rent);
+
+
+            document.getElementById(
+                "totalAtivos"
+            ).textContent = qtd;
+
+
+            document.getElementById(
+                "valorInvestido"
+            ).textContent = moeda(investido);
+
+
+            document.getElementById(
+                "valorAtual"
+            ).textContent = moeda(patrimonio);
+
+
+            document.getElementById(
+                "resultadoCarteira"
+            ).textContent = moeda(lucro);
+
+
+            document.getElementById(
+                "rentabilidadeCarteira"
+            ).textContent = percentual(rent);
+
+
+            document.getElementById(
+                "quantidadeAtivos"
+            ).textContent = qtd;
+
+
+            document.getElementById(
+                "dividendos"
+            ).textContent = moeda(dividendos);
+
+
+            preencherTabelaCarteira(
+                data.ativos ||
+                data.carteira ||
+                []
+            );
+
+        }
+
+        catch (erro) {
+
+            console.log(
+                "Carteira ainda não disponível."
+            );
+
+        }
+
+    }
+
+
+    function preencherTabelaCarteira(ativos) {
+
+        const tbody =
+            document.getElementById(
+                "portfolioTable"
+            );
+
+
+        if (!ativos || ativos.length === 0) {
+
+            return;
+
+        }
+
+
+        tbody.innerHTML = "";
+
+
+        ativos.forEach(item => {
+
+            const ticker =
+                valor(
+                    item,
+                    ["ticker", "symbol"],
+                    "---"
+                );
+
+
+            const quantidade =
+                valor(
+                    item,
+                    ["quantidade", "qtd"],
+                    0
+                );
+
+
+            const medio =
+                valor(
+                    item,
+                    ["preco_medio", "pm"],
+                    0
+                );
+
+
+            const atual =
+                valor(
+                    item,
+                    ["preco_atual", "preco", "price"],
+                    0
+                );
+
+
+            const patrimonio =
+                valor(
+                    item,
+                    ["patrimonio", "valor_atual", "valor"],
+                    quantidade * atual
+                );
+
+
+            const resultado =
+                valor(
+                    item,
+                    ["lucro", "resultado", "lucro_prejuizo"],
+                    0
+                );
+
+
+            const resultadoPercentual =
+                valor(
+                    item,
+                    [
+                        "rentabilidade",
+                        "resultado_percentual",
+                        "lucro_percentual"
+                    ],
+                    0
+                );
+
+
+            const tr =
+                document.createElement("tr");
+
+
+            const classe =
+                Number(resultado) >= 0
+                    ? "positive"
+                    : "negative";
+
+
+            tr.innerHTML = `
+
+                <td>
+                    <strong>${ticker}</strong>
+                </td>
+
+                <td>
+                    ${numero(quantidade, 0)}
+                </td>
+
+                <td>
+                    ${moeda(medio)}
+                </td>
+
+                <td>
+                    ${moeda(atual)}
+                </td>
+
+                <td>
+                    ${moeda(patrimonio)}
+                </td>
+
+                <td class="${classe}">
+                    ${moeda(resultado)}
+                </td>
+
+                <td class="${classe}">
+                    ${percentual(resultadoPercentual)}
+                </td>
+
+            `;
+
+
+            tbody.appendChild(tr);
+
+        });
+
+    }
+
+
+    document
+        .getElementById("tickerInput")
+        .addEventListener(
+            "keydown",
+            function(event) {
+
+                if (event.key === "Enter") {
+
+                    analisarAtivo();
+
+                }
+
+            }
+        );
+
+
+    /*
+     * Carrega a carteira automaticamente
+     * quando a página abre.
+     */
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        function() {
+
+            carregarCarteira();
+
+        }
+    );
+
+</script>
+
+</body>
+      </html>
 
