@@ -698,9 +698,9 @@ with app.app_context():
     print("✅ Tabelas criadas com sucesso!")
 
 # ============================================================
-# ▶️ EXECUÇÃO
+# ▶️ EXECUÇÃO — LINHA COMPLETA!
 # ============================================================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host
+    app.run(host="0.0.0.0", port=port)
