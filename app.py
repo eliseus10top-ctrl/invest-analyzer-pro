@@ -18,7 +18,7 @@ import html
 import uuid
 
 # ============================================================
-# 🚀 INICIALIZAÇÃO
+# 🚀 CONFIGURAÇÕES — PREENCHA AQUI!
 # ============================================================
 
 app = Flask(__name__)
@@ -28,6 +28,15 @@ app.secret_key = os.environ.get("SECRET_KEY", "proposta-exclusiva-secret-2026")
 app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///:memory:"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+# 👇 👇 👇 TROQUE AQUI PELOS SEUS DADOS!
+PLANO_VALOR = 10.00
+LIMITE_GRATIS = 1  # 1 uso grátis
+
+# LINK DE PAGAMENTO — Mercado Pago, PicPay, Stripe, etc.
+LINK_PAGAMENTO = "https://mpago.la/SEU-CODIGO-AQUI"
+# LINK DO WHATSAPP DE SUPORTE
+LINK_WHATSAPP_SUPORTE = "https://wa.me/5577999999999?text=Quero%20ativar%20minha%20assinatura!"
 
 # ============================================================
 # 📊 MODELO DO BANCO DE DADOS
@@ -44,17 +53,6 @@ class UserUsage(db.Model):
 
     def __repr__(self):
         return f"<UserUsage {self.session_id}>"
-
-# ============================================================
-# 🛠️ CONFIGURAÇÕES DO PLANO
-# ============================================================
-
-PLANO_VALOR = 10.00
-LIMITE_GRATIS = 1  # 1 uso grátis
-
-# 👇 TROCA PELO SEU LINK DE PAGAMENTO!
-LINK_PAGAMENTO = "https://mpago.la/SEU-CODIGO-AQUI"
-LINK_WHATSAPP_SUPORTE = "https://wa.me/5577999999999?text=Quero%20ativar%20minha%20assinatura!"
 
 # ============================================================
 # 🎨 INTERFACE WEB
@@ -698,9 +696,5 @@ with app.app_context():
     print("✅ Tabelas criadas com sucesso!")
 
 # ============================================================
-# ▶️ EXECUÇÃO — LINHA COMPLETA!
-# ============================================================
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+# ▶️ EXECUÇÃO — COMPLETO!
+# =================================================
