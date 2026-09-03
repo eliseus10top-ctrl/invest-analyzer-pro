@@ -1,5 +1,4 @@
 gradio 
-Flask
 gunicorn
 yfinance
 pandas
