@@ -23,7 +23,7 @@
 #
 # ================================================================
 
-!pip -q install -U yfinance pandas numpy matplotlib ipywidgets
+
 
 import yfinance as yf
 import pandas as pd
@@ -2950,4 +2950,6 @@ print(
 # ================================================================
 
 pesquisar_ticker()
+if __name__ == "__main__":
+    demo.launch(server_name="0.0.0.0", server_port=10000)
 
