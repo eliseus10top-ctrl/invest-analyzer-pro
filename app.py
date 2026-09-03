@@ -16,10 +16,10 @@ import os
 import html
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "orcamento-pro-secret")
+app.secret_key = os.environ.get("SECRET_KEY", "proposta-exclusiva-secret")
 
 # ============================================================
-# INTERFACE WEB — VISUAL PREMIUM / RESPONSIVO
+# INTERFACE WEB — VISUAL PREMIUM / LUXO
 # ============================================================
 
 HTML = """
@@ -28,28 +28,28 @@ HTML = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#11162f">
-<title>Orçamento Pro — Propostas profissionais</title>
+<meta name="theme-color" content="#111111">
+<title>Proposta Exclusiva — Propostas Premium</title>
 <style>
 *{box-sizing:border-box}
 :root{
-  --navy:#0d1230;
-  --navy2:#171b45;
-  --purple:#635bff;
-  --purple2:#7c3aed;
-  --ink:#172033;
-  --muted:#667085;
-  --line:#e7e9f2;
-  --bg:#f4f6fb;
+  --black:#111111;
+  --black2:#1c1c1c;
+  --gold:#b08d57;
+  --gold2:#d6b77a;
+  --gold-light:#f7f1e5;
+  --ink:#171717;
+  --muted:#737373;
+  --line:#e5e0d7;
+  --bg:#f4f2ee;
   --card:#fff;
-  --success:#087443;
 }
 html{scroll-behavior:smooth}
 body{
   margin:0;
   background:
-    radial-gradient(circle at 8% 0%,rgba(99,91,255,.12),transparent 30%),
-    radial-gradient(circle at 95% 10%,rgba(124,58,237,.10),transparent 28%),
+    radial-gradient(circle at 8% 0%,rgba(176,141,87,.13),transparent 30%),
+    radial-gradient(circle at 95% 10%,rgba(17,17,17,.07),transparent 28%),
     var(--bg);
   color:var(--ink);
   font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
@@ -57,53 +57,64 @@ body{
 .container{max-width:1040px;margin:auto;padding:18px 14px 48px}
 .card{
   background:var(--card);
-  border:1px solid rgba(17,24,39,.06);
+  border:1px solid rgba(17,17,17,.07);
   border-radius:30px;
   overflow:hidden;
-  box-shadow:0 25px 80px rgba(16,24,40,.12);
+  box-shadow:0 25px 80px rgba(17,17,17,.13);
 }
 .hero{
   position:relative;
   overflow:hidden;
-  padding:30px 30px 34px;
+  padding:31px 30px 34px;
   color:#fff;
   background:
-    radial-gradient(circle at 90% 0%,rgba(124,58,237,.65),transparent 35%),
-    linear-gradient(135deg,var(--navy),#28205d 60%,#342078);
+    radial-gradient(circle at 92% -10%,rgba(214,183,122,.30),transparent 32%),
+    radial-gradient(circle at 0% 100%,rgba(176,141,87,.13),transparent 34%),
+    linear-gradient(135deg,#0b0b0b,#171717 60%,#24201a);
+  border-bottom:1px solid rgba(214,183,122,.35);
+}
+.hero:before{
+  content:"";
+  position:absolute;
+  width:290px;height:290px;
+  border:1px solid rgba(214,183,122,.12);
+  border-radius:50%;
+  right:-145px;top:-175px;
 }
 .hero:after{
   content:"";
   position:absolute;
-  width:210px;height:210px;
-  border:1px solid rgba(255,255,255,.10);
+  width:170px;height:170px;
+  border:1px solid rgba(214,183,122,.08);
   border-radius:50%;
-  right:-80px;bottom:-115px;
+  right:-70px;bottom:-105px;
 }
 .brand{display:flex;align-items:center;gap:15px;position:relative;z-index:1}
 .logo{
-  width:56px;height:56px;border-radius:18px;
+  width:58px;height:58px;border-radius:18px;
   display:flex;align-items:center;justify-content:center;
-  font-weight:950;font-size:21px;
-  background:linear-gradient(145deg,rgba(255,255,255,.20),rgba(255,255,255,.07));
-  border:1px solid rgba(255,255,255,.22);
-  box-shadow:0 12px 30px rgba(0,0,0,.18);
+  font-weight:950;font-size:20px;letter-spacing:.5px;
+  color:#f7f1e5;
+  background:linear-gradient(145deg,#242424,#101010);
+  border:1px solid rgba(214,183,122,.55);
+  box-shadow:0 12px 30px rgba(0,0,0,.30),inset 0 0 0 1px rgba(255,255,255,.04);
 }
 .hero h1{margin:0;font-size:30px;letter-spacing:-1px}
-.hero p{margin:7px 0 0;color:#d9dcf5;font-size:14px;line-height:1.45}
+.hero p{margin:7px 0 0;color:#d8d4cb;font-size:14px;line-height:1.45}
 .hero-badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
 .badge{
-  font-size:11px;font-weight:800;color:#f5f3ff;
+  font-size:11px;font-weight:800;color:#efe6d6;
   padding:7px 10px;border-radius:999px;
-  background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.14);
+  background:rgba(176,141,87,.13);
+  border:1px solid rgba(214,183,122,.25);
 }
 .body{padding:30px}
 .progress{
   display:flex;gap:7px;align-items:center;margin:0 0 28px;
-  color:#98a2b3;font-size:11px;font-weight:800;
+  color:#8a847b;font-size:11px;font-weight:800;
 }
-.progress span{height:5px;flex:1;border-radius:99px;background:#eceef5}
-.progress span.active{background:linear-gradient(90deg,var(--purple),var(--purple2))}
+.progress span{height:5px;flex:1;border-radius:99px;background:#ece9e3}
+.progress span.active{background:linear-gradient(90deg,var(--gold),var(--gold2))}
 .section{
   padding:0 0 28px;margin-bottom:28px;
   border-bottom:1px solid var(--line);
@@ -115,38 +126,38 @@ body{
 }
 .num{
   width:32px;height:32px;border-radius:11px;
-  background:linear-gradient(135deg,#eef2ff,#f5f3ff);
-  color:var(--purple);
+  background:linear-gradient(135deg,#f8f2e7,#eee5d6);
+  color:#8b6a38;
   display:flex;align-items:center;justify-content:center;
   font-size:11px;font-weight:950;
-  box-shadow:inset 0 0 0 1px #e4e7ff;
+  box-shadow:inset 0 0 0 1px #e1d2b9;
 }
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .full{grid-column:1/-1}
 .field{min-width:0}
 label{
   display:block;font-size:12px;font-weight:850;
-  color:#344054;margin:0 0 7px;
+  color:#393939;margin:0 0 7px;
 }
 input,textarea,select{
   width:100%;padding:14px 15px;
-  border:1px solid #d8dce7;border-radius:13px;
-  background:#fff;color:#17202a;font-size:15px;
+  border:1px solid #d9d5ce;border-radius:13px;
+  background:#fff;color:#171717;font-size:15px;
   outline:none;transition:.18s;
   box-shadow:0 1px 2px rgba(16,24,40,.02);
 }
-input:hover,textarea:hover{border-color:#b9bfd0}
+input:hover,textarea:hover{border-color:#b9aa90}
 input:focus,textarea:focus,select:focus{
-  border-color:#7c73ff;
-  box-shadow:0 0 0 4px rgba(99,91,255,.10);
+  border-color:#b08d57;
+  box-shadow:0 0 0 4px rgba(176,141,87,.12);
 }
 textarea{min-height:105px;resize:vertical;line-height:1.5}
-.helper{font-size:11px;color:#98a2b3;margin-top:6px;line-height:1.4}
+.helper{font-size:11px;color:#928c83;margin-top:6px;line-height:1.4}
 .value-wrap{position:relative}
 .value-wrap span{
   position:absolute;left:14px;top:50%;
   transform:translateY(-50%);
-  font-size:12px;font-weight:850;color:#667085;
+  font-size:12px;font-weight:850;color:#756f67;
 }
 .value-wrap input{padding-left:42px}
 .actions{
@@ -159,32 +170,33 @@ button{
   transition:.18s;
 }
 .primary{
-  background:linear-gradient(135deg,var(--purple),var(--purple2));
-  color:#fff;
-  box-shadow:0 12px 25px rgba(99,91,255,.22);
+  background:linear-gradient(135deg,#171717,#29241d);
+  color:#f5ead8;
+  border:1px solid #b08d57;
+  box-shadow:0 12px 25px rgba(17,17,17,.18);
 }
 .secondary{
-  background:#fff;color:#344054;border:1px solid #d8dce7;
+  background:#fff;color:#3b3833;border:1px solid #d8d0c2;
 }
-button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.10)}
+button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.12)}
 .note{
-  margin-top:13px;color:#667085;font-size:11px;
+  margin-top:13px;color:#777169;font-size:11px;
   line-height:1.55;text-align:center;
 }
 .flash{
-  background:#fff1f3;border:1px solid #fecdd3;
-  color:#9f1239;padding:14px 15px;border-radius:14px;
+  background:#fff1f0;border:1px solid #f0c9c4;
+  color:#8d2f25;padding:14px 15px;border-radius:14px;
   margin-bottom:20px;font-size:13px;line-height:1.5;
 }
 .tip{
   display:flex;gap:10px;align-items:flex-start;
   padding:13px 14px;border-radius:14px;
-  background:#f7f8ff;border:1px solid #e5e7ff;
-  color:#4b5563;font-size:11px;line-height:1.5;
+  background:#faf7f0;border:1px solid #eadfcf;
+  color:#625c54;font-size:11px;line-height:1.5;
   margin-top:14px;
 }
-.tip strong{color:#312e81}
-.footer-note{text-align:center;color:#98a2b3;font-size:11px;margin-top:18px}
+.tip strong{color:#735628}
+.footer-note{text-align:center;color:#918b82;font-size:11px;margin-top:18px}
 @media(max-width:700px){
   .container{padding:8px 7px 28px}
   .card{border-radius:23px}
@@ -203,14 +215,14 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.10
 <div class="card">
   <div class="hero">
     <div class="brand">
-      <div class="logo">OP</div>
+      <div class="logo">PE</div>
       <div>
-        <h1>Orçamento Pro</h1>
-        <p>Transforme seus serviços em propostas profissionais, bonitas e prontas para enviar.</p>
+        <h1>Proposta Exclusiva</h1>
+        <p>Crie propostas sofisticadas, claras e prontas para impressionar seus clientes.</p>
       </div>
     </div>
     <div class="hero-badges">
-      <span class="badge">✦ PDF profissional</span>
+      <span class="badge">✦ PDF Premium</span>
       <span class="badge">◉ WhatsApp</span>
       <span class="badge">✓ Cálculo automático</span>
     </div>
@@ -297,7 +309,7 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.10
           <input name="prazo" value="{{ data.get('prazo','') }}" placeholder="2 dias úteis">
         </div>
         <div class="field">
-          <label>Validade do orçamento</label>
+          <label>Validade da proposta</label>
           <input name="validade" value="{{ data.get('validade','7 dias') }}" placeholder="7 dias">
         </div>
         <div class="field">
@@ -311,8 +323,8 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.10
       </div>
 
       <div class="tip">
-        <div>💡</div>
-        <div><strong>Importante:</strong> escreva textos como “Yuwuw” no campo Serviço ou Descrição. O campo Valor aceita somente números e valores monetários.</div>
+        <div>✦</div>
+        <div><strong>Importante:</strong> escreva livremente nos campos de serviço e descrição. O campo Valor aceita somente números e valores monetários.</div>
       </div>
     </div>
 
@@ -323,17 +335,17 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.10
     </div>
 
     <div class="actions">
-      <button class="primary" type="submit">✦ Gerar PDF profissional</button>
+      <button class="primary" type="submit">✦ Gerar Proposta Exclusiva</button>
       <button class="secondary" type="button" onclick="enviarWhatsApp()">◉ Enviar pelo WhatsApp</button>
     </div>
 
     <div class="note">
-      Seu orçamento recebe número, data, dados do cliente, serviço, valor, condições, garantia, observações e assinatura.
+      Sua proposta recebe número, data, dados do cliente, serviço, valores, condições, garantia, observações e área de aprovação.
     </div>
   </form>
   </div>
 </div>
-<div class="footer-note">Orçamento Pro • simples para você, profissional para o seu cliente.</div>
+<div class="footer-note">Proposta Exclusiva • apresentação premium para o seu cliente.</div>
 </div>
 
 <script>
@@ -355,7 +367,8 @@ function enviarWhatsApp(){
 # ============================================================
 
 def clean_phone(phone):
-    return re.sub(r"\\D", "", phone or "")
+    return re.sub(r"\D", "", phone or "")
+
 
 def parse_money(value, field_name="Valor"):
     """
@@ -366,7 +379,6 @@ def parse_money(value, field_name="Valor"):
       R$ 230,00
       1.230,50
       1,230.50
-    Nunca tenta converter texto livre como 'Yuwuw'.
     """
     raw = str(value or "").strip()
     if not raw:
@@ -374,7 +386,6 @@ def parse_money(value, field_name="Valor"):
 
     raw = raw.replace("R$", "").replace("r$", "").replace(" ", "")
 
-    # Somente caracteres permitidos para dinheiro.
     if not re.fullmatch(r"[0-9.,]+", raw):
         raise ValueError(
             f"O campo '{field_name}' deve conter apenas números. "
@@ -383,16 +394,13 @@ def parse_money(value, field_name="Valor"):
 
     try:
         if "," in raw and "." in raw:
-            # Se a última pontuação for vírgula: 1.230,50
             if raw.rfind(",") > raw.rfind("."):
                 normalized = raw.replace(".", "").replace(",", ".")
-            # Caso contrário: 1,230.50
             else:
                 normalized = raw.replace(",", "")
         elif "," in raw:
             normalized = raw.replace(".", "").replace(",", ".")
         else:
-            # 1.230.50 é tratado como separadores de milhar.
             if raw.count(".") > 1:
                 normalized = raw.replace(".", "")
             else:
@@ -401,7 +409,9 @@ def parse_money(value, field_name="Valor"):
         number = float(normalized)
 
         if number < 0:
-            raise ValueError(f"O campo '{field_name}' não pode ser negativo.")
+            raise ValueError(
+                f"O campo '{field_name}' não pode ser negativo."
+            )
 
         return number
 
@@ -411,6 +421,7 @@ def parse_money(value, field_name="Valor"):
             f"Use, por exemplo, 230,00."
         )
 
+
 def money_br(value):
     return (
         f"R$ {float(value):,.2f}"
@@ -419,8 +430,12 @@ def money_br(value):
         .replace("X", ".")
     )
 
+
 def pdf_text(value):
-    return html.escape(str(value or ""), quote=False).replace("\n", "<br/>")
+    return html.escape(
+        str(value or ""), quote=False
+    ).replace("\n", "<br/>")
+
 
 def short(value, max_chars=900):
     value = str(value or "").strip()
@@ -428,8 +443,9 @@ def short(value, max_chars=900):
         return value
     return value[:max_chars-3].rstrip() + "..."
 
+
 # ============================================================
-# PDF PREMIUM
+# PDF PREMIUM / LUXO — PRETO + DOURADO
 # ============================================================
 
 def generate_pdf(data):
@@ -438,12 +454,17 @@ def generate_pdf(data):
     numero = datetime.now().strftime("%Y%m%d-%H%M%S")
     data_emissao = datetime.now().strftime("%d/%m/%Y")
 
-    # Validação explícita — evita o erro "could not convert string to float".
     valor = parse_money(data.get("valor"), "Valor do serviço")
-    desconto = parse_money(data.get("desconto"), "Desconto") if data.get("desconto") else 0.0
+    desconto = (
+        parse_money(data.get("desconto"), "Desconto")
+        if data.get("desconto")
+        else 0.0
+    )
 
     if desconto > valor:
-        raise ValueError("O desconto não pode ser maior que o valor do serviço.")
+        raise ValueError(
+            "O desconto não pode ser maior que o valor do serviço."
+        )
 
     total = max(0.0, valor - desconto)
 
@@ -454,68 +475,125 @@ def generate_pdf(data):
         leftMargin=12*mm,
         topMargin=10*mm,
         bottomMargin=12*mm,
-        title=f"Orçamento {numero}",
+        title=f"Proposta Exclusiva {numero}",
         author=data.get("empresa", "")
     )
 
     styles = getSampleStyleSheet()
 
+    # --------------------------------------------------------
+    # ESTILOS
+    # --------------------------------------------------------
+
     styles.add(ParagraphStyle(
-        name="BrandPro", parent=styles["Title"],
-        fontName="Helvetica-Bold", fontSize=21, leading=23,
-        textColor=colors.HexColor("#111827"),
-        alignment=TA_LEFT, spaceAfter=2
+        name="BrandPro",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=23,
+        leading=25,
+        textColor=colors.white,
+        alignment=TA_LEFT,
+        spaceAfter=2
     ))
+
     styles.add(ParagraphStyle(
-        name="TinyPro", parent=styles["Normal"],
-        fontName="Helvetica", fontSize=7.1, leading=9.1,
-        textColor=colors.HexColor("#667085")
+        name="TinyPro",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.1,
+        leading=9.1,
+        textColor=colors.HexColor("#D6D1C8")
     ))
+
     styles.add(ParagraphStyle(
-        name="LabelPro", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=7.1, leading=8.8,
-        textColor=colors.HexColor("#667085")
+        name="LabelPro",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.1,
+        leading=8.8,
+        textColor=colors.HexColor("#6D665C")
     ))
+
     styles.add(ParagraphStyle(
-        name="BodyPro", parent=styles["Normal"],
-        fontName="Helvetica", fontSize=8.3, leading=11.0,
-        textColor=colors.HexColor("#344054")
+        name="BodyPro",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8.3,
+        leading=11.0,
+        textColor=colors.HexColor("#34312D")
     ))
+
     styles.add(ParagraphStyle(
-        name="SectionPro", parent=styles["Heading2"],
-        fontName="Helvetica-Bold", fontSize=9.3, leading=11,
-        textColor=colors.HexColor("#111827"),
-        spaceBefore=2, spaceAfter=4
+        name="SectionPro",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=9.3,
+        leading=11,
+        textColor=colors.HexColor("#171717"),
+        spaceBefore=2,
+        spaceAfter=4
     ))
+
     styles.add(ParagraphStyle(
-        name="BigValuePro", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=20, leading=22,
-        textColor=colors.HexColor("#111827"),
+        name="BigValuePro",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=22,
+        leading=24,
+        textColor=colors.white,
         alignment=TA_RIGHT
     ))
+
     styles.add(ParagraphStyle(
-        name="CenterPro", parent=styles["Normal"],
-        fontName="Helvetica", fontSize=7.1, leading=8.8,
-        textColor=colors.HexColor("#667085"),
-        alignment=TA_CENTER
-    ))
-    styles.add(ParagraphStyle(
-        name="CenterBoldPro", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=7.5, leading=9.0,
-        textColor=colors.HexColor("#344054"),
+        name="CenterPro",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.1,
+        leading=8.8,
+        textColor=colors.HexColor("#737373"),
         alignment=TA_CENTER
     ))
 
-    primary = colors.HexColor("#5B4BDB")
-    primary_dark = colors.HexColor("#30236F")
-    light = colors.HexColor("#F0EEFF")
-    border = colors.HexColor("#D9DCE7")
-    soft = colors.HexColor("#F8F9FC")
-    gray = colors.HexColor("#667085")
-    dark = colors.HexColor("#111827")
-    green = colors.HexColor("#087443")
+    styles.add(ParagraphStyle(
+        name="CenterBoldPro",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.0,
+        textColor=colors.HexColor("#171717"),
+        alignment=TA_CENTER
+    ))
+
+    styles.add(ParagraphStyle(
+        name="GoldCenter",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.4,
+        leading=9,
+        textColor=colors.HexColor("#8A6837"),
+        alignment=TA_CENTER
+    ))
+
+    # --------------------------------------------------------
+    # PALETA
+    # --------------------------------------------------------
+
+    black = colors.HexColor("#111111")
+    black_soft = colors.HexColor("#1C1C1C")
+    gold = colors.HexColor("#B08D57")
+    gold_light = colors.HexColor("#D6B77A")
+    cream = colors.HexColor("#FAF8F3")
+    light_gold = colors.HexColor("#F7F1E5")
+    border = colors.HexColor("#D8D0C2")
+    soft = colors.HexColor("#F8F7F4")
+    gray = colors.HexColor("#737373")
+    dark = colors.HexColor("#171717")
 
     story = []
+
+    # --------------------------------------------------------
+    # CABEÇALHO PREMIUM
+    # --------------------------------------------------------
 
     company = pdf_text(data.get("empresa") or "EMPRESA")
 
@@ -525,18 +603,26 @@ def generate_pdf(data):
         data.get("empresa_local"),
         data.get("empresa_doc")
     ]
+
     contact = "<br/>".join(
-        pdf_text(x) for x in contact_parts if str(x or "").strip()
+        pdf_text(x) for x in contact_parts
+        if str(x or "").strip()
     )
 
     badge = Table(
-        [[Paragraph("<b>ORÇAMENTO<br/>PROFISSIONAL</b>", styles["CenterBoldPro"])]],
+        [[
+            Paragraph(
+                "<b>PROPOSTA<br/>EXCLUSIVA</b>",
+                styles["CenterBoldPro"]
+            )
+        ]],
         colWidths=[34*mm],
-        rowHeights=[15*mm]
+        rowHeights=[16*mm]
     )
+
     badge.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,-1), light),
-        ("BOX", (0,0), (-1,-1), 0.8, primary),
+        ("BACKGROUND", (0,0), (-1,-1), light_gold),
+        ("BOX", (0,0), (-1,-1), 0.9, gold),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("LEFTPADDING", (0,0), (-1,-1), 3),
         ("RIGHTPADDING", (0,0), (-1,-1), 3),
@@ -545,7 +631,7 @@ def generate_pdf(data):
     header_left = [
         Paragraph(company, styles["BrandPro"]),
         Paragraph(
-            f"Orçamento nº <b>{numero}</b> &nbsp; • &nbsp; Emitido em {data_emissao}",
+            f"Proposta nº <b>{numero}</b> &nbsp; • &nbsp; Emitida em {data_emissao}",
             styles["TinyPro"]
         )
     ]
@@ -558,25 +644,37 @@ def generate_pdf(data):
         ]],
         colWidths=[88*mm, 52*mm, 34*mm]
     )
+
     header.setStyle(TableStyle([
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("BACKGROUND", (0,0), (-1,-1), black),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("ALIGN", (1,0), (1,0), "RIGHT"),
         ("ALIGN", (2,0), (2,0), "RIGHT"),
-        ("LEFTPADDING", (0,0), (-1,-1), 0),
-        ("RIGHTPADDING", (0,0), (-1,-1), 0),
-        ("TOPPADDING", (0,0), (-1,-1), 0),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ("LEFTPADDING", (0,0), (-1,-1), 8),
+        ("RIGHTPADDING", (0,0), (-1,-1), 8),
+        ("TOPPADDING", (0,0), (-1,-1), 9),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 9),
+        ("BOX", (0,0), (-1,-1), 0.8, gold),
     ]))
 
     story += [
         header,
-        Spacer(1, 2.5*mm),
-        HRFlowable(width="100%", thickness=1.2, color=primary),
-        Spacer(1, 2.4*mm)
+        Spacer(1, 1.8*mm),
+        HRFlowable(
+            width="100%",
+            thickness=1.3,
+            color=gold
+        ),
+        Spacer(1, 2.6*mm)
     ]
 
-    # CLIENTE
-    story.append(Paragraph("DADOS DO CLIENTE", styles["SectionPro"]))
+    # --------------------------------------------------------
+    # DADOS DO CLIENTE
+    # --------------------------------------------------------
+
+    story.append(
+        Paragraph("DADOS DO CLIENTE", styles["SectionPro"])
+    )
 
     cliente_table = Table([
         [
@@ -584,15 +682,25 @@ def generate_pdf(data):
             Paragraph("WHATSAPP", styles["LabelPro"])
         ],
         [
-            Paragraph(pdf_text(data.get("cliente")), styles["BodyPro"]),
-            Paragraph(pdf_text(data.get("whatsapp")) or "Não informado", styles["BodyPro"])
+            Paragraph(
+                pdf_text(data.get("cliente")),
+                styles["BodyPro"]
+            ),
+            Paragraph(
+                pdf_text(data.get("whatsapp")) or "Não informado",
+                styles["BodyPro"]
+            )
         ],
         [
             Paragraph("ENDEREÇO", styles["LabelPro"]),
             ""
         ],
         [
-            Paragraph(pdf_text(data.get("endereco")) or "Não informado", styles["BodyPro"]),
+            Paragraph(
+                pdf_text(data.get("endereco"))
+                or "Não informado",
+                styles["BodyPro"]
+            ),
             ""
         ]
     ], colWidths=[111*mm, 63*mm])
@@ -602,17 +710,28 @@ def generate_pdf(data):
         ("SPAN", (0,2), (-1,2)),
         ("SPAN", (0,3), (-1,3)),
         ("BOX", (0,0), (-1,-1), 0.55, border),
-        ("INNERGRID", (0,0), (-1,1), 0.35, colors.HexColor("#E4E7EC")),
+        ("INNERGRID", (0,0), (-1,1), 0.35, colors.HexColor("#E8E3DA")),
         ("LEFTPADDING", (0,0), (-1,-1), 7),
         ("RIGHTPADDING", (0,0), (-1,-1), 7),
         ("TOPPADDING", (0,0), (-1,-1), 4),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
 
-    story += [cliente_table, Spacer(1, 2.2*mm)]
+    story += [
+        cliente_table,
+        Spacer(1, 2.2*mm)
+    ]
 
+    # --------------------------------------------------------
     # SERVIÇO
-    story.append(Paragraph("SERVIÇO / ESCOPO DA PROPOSTA", styles["SectionPro"]))
+    # --------------------------------------------------------
+
+    story.append(
+        Paragraph(
+            "SERVIÇO / ESCOPO DA PROPOSTA",
+            styles["SectionPro"]
+        )
+    )
 
     service_table = Table([
         [
@@ -621,18 +740,32 @@ def generate_pdf(data):
             Paragraph("GARANTIA", styles["LabelPro"])
         ],
         [
-            Paragraph(pdf_text(data.get("servico")), styles["BodyPro"]),
-            Paragraph(pdf_text(data.get("prazo")) or "A combinar", styles["BodyPro"]),
-            Paragraph(pdf_text(data.get("garantia")) or "A combinar", styles["BodyPro"])
+            Paragraph(
+                pdf_text(data.get("servico")),
+                styles["BodyPro"]
+            ),
+            Paragraph(
+                pdf_text(data.get("prazo")) or "A combinar",
+                styles["BodyPro"]
+            ),
+            Paragraph(
+                pdf_text(data.get("garantia")) or "A combinar",
+                styles["BodyPro"]
+            )
         ],
-        [Paragraph("DESCRIÇÃO", styles["LabelPro"]), "", ""],
+        [
+            Paragraph("DESCRIÇÃO", styles["LabelPro"]),
+            "",
+            ""
+        ],
         [
             Paragraph(
                 pdf_text(short(data.get("descricao"), 700))
                 or "Sem descrição adicional.",
                 styles["BodyPro"]
             ),
-            "", ""
+            "",
+            ""
         ]
     ], colWidths=[92*mm, 41*mm, 41*mm])
 
@@ -641,17 +774,25 @@ def generate_pdf(data):
         ("SPAN", (0,2), (-1,2)),
         ("SPAN", (0,3), (-1,3)),
         ("BOX", (0,0), (-1,-1), 0.55, border),
-        ("INNERGRID", (0,0), (-1,1), 0.35, colors.HexColor("#E4E7EC")),
+        ("INNERGRID", (0,0), (-1,1), 0.35, colors.HexColor("#E8E3DA")),
         ("LEFTPADDING", (0,0), (-1,-1), 7),
         ("RIGHTPADDING", (0,0), (-1,-1), 7),
         ("TOPPADDING", (0,0), (-1,-1), 4),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
 
-    story += [service_table, Spacer(1, 2.2*mm)]
+    story += [
+        service_table,
+        Spacer(1, 2.2*mm)
+    ]
 
+    # --------------------------------------------------------
     # RESUMO FINANCEIRO
-    story.append(Paragraph("RESUMO FINANCEIRO", styles["SectionPro"]))
+    # --------------------------------------------------------
+
+    story.append(
+        Paragraph("RESUMO FINANCEIRO", styles["SectionPro"])
+    )
 
     finance = Table([
         [
@@ -663,16 +804,23 @@ def generate_pdf(data):
             Paragraph(money_br(desconto), styles["BodyPro"])
         ],
         [
-            Paragraph("<b>TOTAL DA PROPOSTA</b>", styles["LabelPro"]),
-            Paragraph(money_br(total), styles["BigValuePro"])
+            Paragraph(
+                "<b>TOTAL DA PROPOSTA</b>",
+                styles["LabelPro"]
+            ),
+            Paragraph(
+                money_br(total),
+                styles["BigValuePro"]
+            )
         ]
     ], colWidths=[105*mm, 69*mm])
 
     finance.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,1), soft),
-        ("BACKGROUND", (0,2), (-1,2), light),
-        ("BOX", (0,0), (-1,-1), 0.8, primary),
-        ("LINEABOVE", (0,2), (-1,2), 0.9, primary),
+        ("BACKGROUND", (0,0), (-1,1), cream),
+        ("BACKGROUND", (0,2), (-1,2), black),
+        ("BOX", (0,0), (-1,-1), 1.0, gold),
+        ("LINEABOVE", (0,2), (-1,2), 1.2, gold),
+        ("TEXTCOLOR", (0,2), (0,2), gold_light),
         ("ALIGN", (1,0), (1,-1), "RIGHT"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("LEFTPADDING", (0,0), (-1,-1), 8),
@@ -681,9 +829,15 @@ def generate_pdf(data):
         ("BOTTOMPADDING", (0,0), (-1,-1), 5),
     ]))
 
-    story += [finance, Spacer(1, 2.2*mm)]
+    story += [
+        finance,
+        Spacer(1, 2.2*mm)
+    ]
 
-    # CONDIÇÕES
+    # --------------------------------------------------------
+    # CONDIÇÕES COMERCIAIS
+    # --------------------------------------------------------
+
     conditions = [
         ("VALIDADE", data.get("validade") or "Não informada"),
         ("PAGAMENTO", data.get("pagamento") or "A combinar"),
@@ -692,6 +846,7 @@ def generate_pdf(data):
     ]
 
     cells = []
+
     for label, value in conditions:
         cells.append([
             Paragraph(label, styles["LabelPro"]),
@@ -706,7 +861,7 @@ def generate_pdf(data):
     cond_table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,-1), soft),
         ("BOX", (0,0), (-1,-1), 0.55, border),
-        ("INNERGRID", (0,0), (-1,-1), 0.35, colors.HexColor("#E4E7EC")),
+        ("INNERGRID", (0,0), (-1,-1), 0.35, colors.HexColor("#E8E3DA")),
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (0,0), (-1,-1), 6),
         ("RIGHTPADDING", (0,0), (-1,-1), 6),
@@ -715,12 +870,18 @@ def generate_pdf(data):
     ]))
 
     story += [
-        Paragraph("CONDIÇÕES COMERCIAIS", styles["SectionPro"]),
+        Paragraph(
+            "CONDIÇÕES COMERCIAIS",
+            styles["SectionPro"]
+        ),
         cond_table,
         Spacer(1, 2.2*mm)
     ]
 
+    # --------------------------------------------------------
     # OBSERVAÇÕES
+    # --------------------------------------------------------
+
     obs_text = (
         pdf_text(short(data.get("observacoes"), 560))
         or "Nenhuma observação adicional."
@@ -732,34 +893,64 @@ def generate_pdf(data):
     ], colWidths=[174*mm])
 
     obs.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#F7F5FF")),
-        ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#FCFBFF")),
-        ("BOX", (0,0), (-1,-1), 0.55, border),
-        ("LINEBELOW", (0,0), (-1,0), 0.35, colors.HexColor("#E4E7EC")),
+        ("BACKGROUND", (0,0), (-1,0), black),
+        ("BACKGROUND", (0,1), (-1,1), cream),
+        ("TEXTCOLOR", (0,0), (-1,0), gold_light),
+        ("BOX", (0,0), (-1,-1), 0.65, gold),
+        ("LINEBELOW", (0,0), (-1,0), 0.5, gold),
         ("LEFTPADDING", (0,0), (-1,-1), 7),
         ("RIGHTPADDING", (0,0), (-1,-1), 7),
         ("TOPPADDING", (0,0), (-1,-1), 4),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
 
-    story += [obs, Spacer(1, 2.4*mm)]
+    story += [
+        obs,
+        Spacer(1, 2.4*mm)
+    ]
 
+    # --------------------------------------------------------
     # APROVAÇÃO
-    story.append(Paragraph("APROVAÇÃO", styles["SectionPro"]))
+    # --------------------------------------------------------
+
+    story.append(
+        Paragraph("APROVAÇÃO", styles["SectionPro"])
+    )
 
     sign = Table([
-        [Spacer(1, 8*mm), Spacer(1, 8*mm)],
         [
-            Paragraph("________________________________", styles["CenterPro"]),
-            Paragraph("________________________________", styles["CenterPro"])
+            Spacer(1, 8*mm),
+            Spacer(1, 8*mm)
         ],
         [
-            Paragraph(pdf_text(data.get("empresa")) or "Responsável", styles["CenterPro"]),
-            Paragraph(pdf_text(data.get("cliente")) or "Cliente", styles["CenterPro"])
+            Paragraph(
+                "________________________________",
+                styles["CenterPro"]
+            ),
+            Paragraph(
+                "________________________________",
+                styles["CenterPro"]
+            )
         ],
         [
-            Paragraph("Responsável pela proposta", styles["CenterPro"]),
-            Paragraph("Cliente / Aprovação", styles["CenterPro"])
+            Paragraph(
+                pdf_text(data.get("empresa")) or "Responsável",
+                styles["CenterPro"]
+            ),
+            Paragraph(
+                pdf_text(data.get("cliente")) or "Cliente",
+                styles["CenterPro"]
+            )
+        ],
+        [
+            Paragraph(
+                "Responsável pela proposta",
+                styles["GoldCenter"]
+            ),
+            Paragraph(
+                "Cliente / Aprovação",
+                styles["GoldCenter"]
+            )
         ]
     ], colWidths=[87*mm, 87*mm])
 
@@ -774,30 +965,46 @@ def generate_pdf(data):
     story += [
         sign,
         Spacer(1, 1.2*mm),
-        HRFlowable(width="100%", thickness=0.5, color=border),
+        HRFlowable(
+            width="100%",
+            thickness=0.5,
+            color=border
+        ),
         Spacer(1, 1.1*mm),
         Paragraph(
-            "Obrigado pela oportunidade. Esta proposta foi preparada especialmente para você.",
+            "Obrigado pela oportunidade. Será um prazer realizar este projeto para você.",
             styles["CenterPro"]
         )
     ]
 
+    # --------------------------------------------------------
+    # RODAPÉ
+    # --------------------------------------------------------
+
     def footer(canvas, doc):
         canvas.saveState()
 
-        # Faixa superior discreta no rodapé
-        canvas.setStrokeColor(colors.HexColor("#E4E7EC"))
-        canvas.setLineWidth(0.4)
-        canvas.line(12*mm, 8.5*mm, 198*mm, 8.5*mm)
+        canvas.setStrokeColor(gold)
+        canvas.setLineWidth(0.55)
+        canvas.line(
+            12*mm,
+            8.5*mm,
+            198*mm,
+            8.5*mm
+        )
 
         canvas.setFont("Helvetica", 6.8)
         canvas.setFillColor(gray)
+
         canvas.drawString(
-            12*mm, 5.5*mm,
-            f"Orçamento {numero} • {data.get('empresa','')}"
+            12*mm,
+            5.5*mm,
+            f"Proposta {numero} • {data.get('empresa','')}"
         )
+
         canvas.drawRightString(
-            198*mm, 5.5*mm,
+            198*mm,
+            5.5*mm,
             f"Página {doc.page}"
         )
 
@@ -812,6 +1019,7 @@ def generate_pdf(data):
     buffer.seek(0)
     return buffer, numero
 
+
 # ============================================================
 # ROTAS
 # ============================================================
@@ -820,23 +1028,35 @@ def generate_pdf(data):
 def index():
     return render_template_string(HTML, data={})
 
+
 @app.route("/gerar-pdf", methods=["POST"])
 def gerar_pdf():
     data = request.form.to_dict()
 
     try:
         pdf, numero = generate_pdf(data)
+
     except ValueError as e:
         flash(str(e))
-        return render_template_string(HTML, data=data), 400
-    except Exception:
-        app.logger.exception("Erro inesperado ao gerar PDF")
-        flash(
-            "Não foi possível gerar o PDF. Verifique os valores e tente novamente."
-        )
-        return render_template_string(HTML, data=data), 500
+        return render_template_string(
+            HTML,
+            data=data
+        ), 400
 
-    filename = f"orcamento_{numero}.pdf"
+    except Exception:
+        app.logger.exception(
+            "Erro inesperado ao gerar PDF"
+        )
+        flash(
+            "Não foi possível gerar o PDF. "
+            "Verifique os valores e tente novamente."
+        )
+        return render_template_string(
+            HTML,
+            data=data
+        ), 500
+
+    filename = f"proposta_exclusiva_{numero}.pdf"
 
     return send_file(
         pdf,
@@ -845,29 +1065,52 @@ def gerar_pdf():
         download_name=filename
     )
 
+
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     data = request.form.to_dict()
 
-    phone = clean_phone(data.get("whatsapp", ""))
+    phone = clean_phone(
+        data.get("whatsapp", "")
+    )
 
     if not phone:
         return "Informe o WhatsApp do cliente.", 400
 
     try:
-        valor = parse_money(data.get("valor"), "Valor do serviço")
+        valor = parse_money(
+            data.get("valor"),
+            "Valor do serviço"
+        )
+
         desconto = (
-            parse_money(data.get("desconto"), "Desconto")
+            parse_money(
+                data.get("desconto"),
+                "Desconto"
+            )
             if data.get("desconto")
             else 0.0
         )
-        total = max(0.0, valor - desconto)
+
+        if desconto > valor:
+            return (
+                "O desconto não pode ser maior "
+                "que o valor do serviço.",
+                400
+            )
+
+        total = max(
+            0.0,
+            valor - desconto
+        )
+
     except ValueError as e:
         return str(e), 400
 
     text = (
         f"Olá, {data.get('cliente','')}! "
-        f"Segue a proposta da {data.get('empresa','')} "
+        f"Segue a proposta da "
+        f"{data.get('empresa','')} "
         f"para {data.get('servico','')}. "
         f"Valor total: {money_br(total)}. "
         f"Prazo: {data.get('prazo','a combinar')}. "
@@ -875,13 +1118,29 @@ def whatsapp():
     )
 
     return redirect(
-        "https://wa.me/" + phone + "?text=" + quote(text)
+        "https://wa.me/"
+        + phone
+        + "?text="
+        + quote(text)
     )
+
 
 @app.route("/health")
 def health():
     return {"status": "ok"}
 
+
+# ============================================================
+# EXECUÇÃO
+# ============================================================
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    port = int(
+        os.environ.get("PORT", 5000)
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
