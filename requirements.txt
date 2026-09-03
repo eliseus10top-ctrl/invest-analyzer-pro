@@ -1,6 +1,6 @@
-gradio
+gradio 
+Flask
+gunicorn
 yfinance
 pandas
 numpy
-plotly
-
