@@ -1,24 +1,23 @@
-
-from flask import Flask, request, render_template_string, send_file, redirect, url_for, flash
+from flask import Flask, request, render_template_string, send_file, redirect, flash
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, KeepTogether
-)
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether
 from io import BytesIO
 from datetime import datetime
 from urllib.parse import quote
 import re
 import os
+import html
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "orcamento-profissional-secret")
+
+# ============================================================
+# INTERFACE WEB
+# ============================================================
 
 HTML = """
 <!doctype html>
@@ -26,66 +25,144 @@ HTML = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Gerador de Orçamento Profissional</title>
+<title>Orçamento Pro — Gerador de Propostas</title>
 <style>
-*{box-sizing:border-box} body{margin:0;background:#f3f5f7;font-family:Arial,sans-serif;color:#17202a}
-.container{max-width:900px;margin:30px auto;padding:20px}
-.card{background:#fff;border-radius:18px;padding:28px;box-shadow:0 8px 30px rgba(0,0,0,.08)}
-h1{margin:0 0 8px;font-size:28px}.sub{color:#68737d;margin-bottom:26px}
+*{box-sizing:border-box}
+:root{
+  --primary:#4f46e5;--primary2:#4338ca;--ink:#172033;
+  --muted:#667085;--line:#e4e7ec;--bg:#f5f7fb;--card:#fff;
+}
+body{margin:0;background:linear-gradient(135deg,#f7f8fc,#eef1f8);
+font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink)}
+.container{max-width:980px;margin:0 auto;padding:28px 16px 50px}
+.card{background:var(--card);border:1px solid #eaecf0;border-radius:24px;
+box-shadow:0 18px 50px rgba(16,24,40,.10);overflow:hidden}
+.hero{padding:30px 32px;background:linear-gradient(135deg,#111827,#312e81);color:#fff}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,.14);
+display:flex;align-items:center;justify-content:center;font-weight:900;font-size:21px;
+border:1px solid rgba(255,255,255,.18)}
+.hero h1{margin:0;font-size:28px;letter-spacing:-.6px}
+.hero p{margin:7px 0 0;color:#d9ddf5;font-size:14px}
+.body{padding:28px 32px}
+.section{padding:0 0 26px;margin-bottom:26px;border-bottom:1px solid var(--line)}
+.section:last-of-type{border-bottom:0;margin-bottom:0}
+.section-title{display:flex;align-items:center;gap:10px;margin:0 0 17px;font-size:17px}
+.num{width:29px;height:29px;border-radius:9px;background:#eef2ff;color:var(--primary);
+display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.full{grid-column:1/-1} label{display:block;font-weight:700;margin-bottom:7px}
-input,textarea{width:100%;padding:13px;border:1px solid #ccd3da;border-radius:10px;font-size:16px}
-textarea{min-height:100px;resize:vertical}
-.section{margin-top:25px;padding-top:20px;border-top:1px solid #e6e9ec}
-.section h2{font-size:18px;margin:0 0 16px}
-button{border:0;border-radius:11px;padding:14px 20px;background:#111827;color:white;font-size:16px;font-weight:700;cursor:pointer}
-button:hover{opacity:.92}.note{font-size:13px;color:#68737d;margin-top:12px}
-.flash{background:#fff1f1;color:#a51d2d;padding:12px;border-radius:10px;margin-bottom:16px}
-@media(max-width:650px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.container{margin:0 auto;padding:12px}.card{padding:20px}}
+.full{grid-column:1/-1}
+label{display:block;font-size:12px;font-weight:800;color:#344054;margin:0 0 7px}
+input,textarea,select{width:100%;padding:13px 14px;border:1px solid #d0d5dd;
+border-radius:11px;background:#fff;color:#17202a;font-size:15px;outline:none;transition:.15s}
+input:focus,textarea:focus,select:focus{border-color:#818cf8;box-shadow:0 0 0 4px #eef2ff}
+textarea{min-height:92px;resize:vertical}
+.helper{font-size:11px;color:#98a2b3;margin-top:5px}
+.actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+button{border:0;border-radius:12px;padding:14px 18px;font-size:15px;font-weight:800;
+cursor:pointer;transition:.15s}
+.primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;
+box-shadow:0 8px 20px rgba(79,70,229,.22)}
+.secondary{background:#fff;color:#344054;border:1px solid #d0d5dd}
+button:hover{transform:translateY(-1px)}
+.note{margin-top:12px;color:#667085;font-size:12px;line-height:1.5}
+.flash{background:#fff1f3;border:1px solid #fecdd3;color:#9f1239;padding:12px 14px;
+border-radius:12px;margin-bottom:20px;font-size:13px}
+.footer-note{text-align:center;color:#98a2b3;font-size:11px;margin-top:18px}
+@media(max-width:680px){
+  .container{padding:10px 8px 30px}.hero{padding:24px 20px}.body{padding:22px 18px}
+  .grid{grid-template-columns:1fr}.full{grid-column:auto}.actions button{width:100%}
+}
 </style>
 </head>
 <body>
-<div class="container"><div class="card">
-<h1>Orçamento Profissional</h1>
-<div class="sub">Preencha os dados e gere um PDF pronto para enviar ao seu cliente pelo WhatsApp.</div>
-{% with messages = get_flashed_messages() %}
-{% if messages %}<div class="flash">{{ messages[0] }}</div>{% endif %}
-{% endwith %}
-<form method="post" action="/gerar-pdf">
-<div class="section"><h2>1. Sua empresa</h2>
-<div class="grid">
-<div><label>Nome da empresa *</label><input name="empresa" required value="{{ data.get('empresa','') }}"></div>
-<div><label>Telefone / WhatsApp da empresa</label><input name="empresa_whatsapp" value="{{ data.get('empresa_whatsapp','') }}"></div>
-<div><label>E-mail</label><input type="email" name="empresa_email" value="{{ data.get('empresa_email','') }}"></div>
-<div><label>Cidade / Estado</label><input name="empresa_local" value="{{ data.get('empresa_local','') }}"></div>
-</div></div>
+<div class="container">
+<div class="card">
+  <div class="hero">
+    <div class="brand">
+      <div class="logo">OP</div>
+      <div>
+        <h1>Orçamento Pro</h1>
+        <p>Crie propostas comerciais elegantes, prontas para PDF e WhatsApp.</p>
+      </div>
+    </div>
+  </div>
 
-<div class="section"><h2>2. Cliente</h2>
-<div class="grid">
-<div><label>Nome do cliente *</label><input name="cliente" required value="{{ data.get('cliente','') }}"></div>
-<div><label>WhatsApp do cliente</label><input name="whatsapp" value="{{ data.get('whatsapp','') }}"></div>
-<div class="full"><label>Endereço do cliente</label><input name="endereco" value="{{ data.get('endereco','') }}"></div>
-</div></div>
+  <div class="body">
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}<div class="flash">{{ messages[0] }}</div>{% endif %}
+  {% endwith %}
 
-<div class="section"><h2>3. Serviço</h2>
-<div class="grid">
-<div class="full"><label>Nome do serviço *</label><input name="servico" required value="{{ data.get('servico','') }}"></div>
-<div class="full"><label>Descrição detalhada</label><textarea name="descricao">{{ data.get('descricao','') }}</textarea></div>
-<div><label>Valor (R$) *</label><input name="valor" required placeholder="620,00" value="{{ data.get('valor','') }}"></div>
-<div><label>Prazo de execução</label><input name="prazo" placeholder="3 dias úteis" value="{{ data.get('prazo','') }}"></div>
-<div><label>Validade do orçamento</label><input name="validade" placeholder="7 dias" value="{{ data.get('validade','7 dias') }}"></div>
-<div><label>Forma de pagamento</label><input name="pagamento" placeholder="50% na aprovação + 50% na entrega" value="{{ data.get('pagamento','') }}"></div>
-<div class="full"><label>Observações / condições</label><textarea name="observacoes" placeholder="Materiais, garantia, condições e outras informações...">{{ data.get('observacoes','') }}</textarea></div>
-</div></div>
+  <form method="post" action="/gerar-pdf" id="orcamentoForm">
 
-<div class="section">
-<button type="submit">Gerar PDF profissional →</button>
-<div class="note">O PDF será gerado com número do orçamento, data, resumo do serviço, valor, condições e área de assinatura.</div>
+    <div class="section">
+      <h2 class="section-title"><span class="num">01</span> Sua empresa</h2>
+      <div class="grid">
+        <div><label>Nome da empresa *</label><input name="empresa" required value="{{ data.get('empresa','') }}" placeholder="Ex.: Luana Serviços"></div>
+        <div><label>Telefone / WhatsApp</label><input name="empresa_whatsapp" value="{{ data.get('empresa_whatsapp','') }}" placeholder="(77) 99999-9999"></div>
+        <div><label>E-mail</label><input type="email" name="empresa_email" value="{{ data.get('empresa_email','') }}" placeholder="contato@empresa.com"></div>
+        <div><label>Cidade / Estado</label><input name="empresa_local" value="{{ data.get('empresa_local','') }}" placeholder="Vitória da Conquista - BA"></div>
+        <div class="full"><label>CPF / CNPJ <span style="font-weight:500;color:#98a2b3">(opcional)</span></label><input name="empresa_doc" value="{{ data.get('empresa_doc','') }}" placeholder="00.000.000/0001-00"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title"><span class="num">02</span> Cliente</h2>
+      <div class="grid">
+        <div><label>Nome do cliente *</label><input name="cliente" required value="{{ data.get('cliente','') }}" placeholder="Nome completo"></div>
+        <div><label>WhatsApp do cliente</label><input name="whatsapp" value="{{ data.get('whatsapp','') }}" placeholder="(77) 98888-8888"></div>
+        <div class="full"><label>Endereço</label><input name="endereco" value="{{ data.get('endereco','') }}" placeholder="Rua, número, bairro, cidade"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title"><span class="num">03</span> Serviço e valores</h2>
+      <div class="grid">
+        <div class="full"><label>Serviço / proposta *</label><input name="servico" required value="{{ data.get('servico','') }}" placeholder="Ex.: Instalação e manutenção de porta"></div>
+        <div class="full"><label>Descrição detalhada</label><textarea name="descricao" maxlength="900" placeholder="Explique de forma clara o que será realizado...">{{ data.get('descricao','') }}</textarea></div>
+        <div><label>Valor total (R$) *</label><input name="valor" required value="{{ data.get('valor','') }}" placeholder="230,00"></div>
+        <div><label>Prazo de execução</label><input name="prazo" value="{{ data.get('prazo','') }}" placeholder="2 dias úteis"></div>
+        <div><label>Validade do orçamento</label><input name="validade" value="{{ data.get('validade','7 dias') }}" placeholder="7 dias"></div>
+        <div><label>Forma de pagamento</label><input name="pagamento" value="{{ data.get('pagamento','') }}" placeholder="50% na aprovação + 50% na entrega"></div>
+        <div><label>Garantia</label><input name="garantia" value="{{ data.get('garantia','') }}" placeholder="90 dias"></div>
+        <div><label>Desconto (opcional)</label><input name="desconto" value="{{ data.get('desconto','') }}" placeholder="0,00"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title"><span class="num">04</span> Observações</h2>
+      <textarea name="observacoes" maxlength="700" placeholder="Materiais, condições, garantia, horários ou informações importantes...">{{ data.get('observacoes','') }}</textarea>
+      <div class="helper">Dica: mantenha as observações objetivas para o documento continuar em uma única página.</div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" type="submit">✦ Gerar PDF profissional</button>
+      <button class="secondary" type="button" onclick="enviarWhatsApp()">◉ Enviar pelo WhatsApp</button>
+    </div>
+    <div class="note">O PDF inclui número do orçamento, data, dados do cliente, serviço, valor em destaque, condições, garantia, observações e espaço para assinatura.</div>
+  </form>
+  </div>
 </div>
-</form>
-</div></div>
-</body></html>
+<div class="footer-note">Orçamento Pro • simples para você, profissional para o seu cliente.</div>
+</div>
+
+<script>
+function enviarWhatsApp(){
+  const f=document.getElementById('orcamentoForm');
+  if(!f.reportValidity()) return;
+  const old=f.action;
+  f.action='/whatsapp';
+  f.submit();
+  f.action=old;
+}
+</script>
+</body>
+</html>
 """
+
+# ============================================================
+# FUNÇÕES AUXILIARES
+# ============================================================
 
 def clean_phone(phone):
     return re.sub(r"\D", "", phone or "")
@@ -94,207 +171,290 @@ def parse_money(value):
     value = (value or "").strip().replace("R$", "").replace(" ", "")
     if not value:
         return 0.0
-    # Aceita 620,00 / 620.00 / 1.620,00
     if "," in value:
         value = value.replace(".", "").replace(",", ".")
-    else:
-        # Se houver vários pontos, assume separadores de milhar
-        if value.count(".") > 1:
-            value = value.replace(".", "")
+    elif value.count(".") > 1:
+        value = value.replace(".", "")
     return float(value)
 
 def money_br(value):
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def pdf_text(value):
-    return (value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return html.escape(str(value or ""), quote=False).replace("\n", "<br/>")
+
+def short(value, max_chars=900):
+    value = str(value or "").strip()
+    if len(value) <= max_chars:
+        return value
+    return value[:max_chars-3].rstrip() + "..."
+
+# ============================================================
+# PDF PROFISSIONAL — OTIMIZADO PARA UMA ÚNICA PÁGINA A4
+# ============================================================
 
 def generate_pdf(data):
     buffer = BytesIO()
     numero = datetime.now().strftime("%Y%m%d-%H%M%S")
     data_emissao = datetime.now().strftime("%d/%m/%Y")
     valor = parse_money(data.get("valor"))
+    desconto = parse_money(data.get("desconto")) if data.get("desconto") else 0.0
 
     doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        rightMargin=18*mm, leftMargin=18*mm,
-        topMargin=17*mm, bottomMargin=17*mm,
+        buffer,
+        pagesize=A4,
+        rightMargin=12*mm,
+        leftMargin=12*mm,
+        topMargin=11*mm,
+        bottomMargin=12*mm,
         title=f"Orçamento {numero}",
-        author=data.get("empresa","")
+        author=data.get("empresa", "")
     )
 
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
-        name="TitlePro", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=23, leading=27, textColor=colors.HexColor("#111827"),
-        alignment=TA_LEFT, spaceAfter=3
+        name="Brand", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=21, leading=23, textColor=colors.HexColor("#111827"),
+        alignment=TA_LEFT, spaceAfter=2
     ))
     styles.add(ParagraphStyle(
-        name="SmallGray", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=8.5, leading=12, textColor=colors.HexColor("#667085")
+        name="Tiny", parent=styles["Normal"], fontName="Helvetica",
+        fontSize=7.2, leading=9.2, textColor=colors.HexColor("#667085")
+    ))
+    styles.add(ParagraphStyle(
+        name="Label", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=7.2, leading=9, textColor=colors.HexColor("#667085")
+    ))
+    styles.add(ParagraphStyle(
+        name="Body", parent=styles["Normal"], fontName="Helvetica",
+        fontSize=8.4, leading=11.2, textColor=colors.HexColor("#344054")
     ))
     styles.add(ParagraphStyle(
         name="Section", parent=styles["Heading2"], fontName="Helvetica-Bold",
-        fontSize=11, leading=14, textColor=colors.HexColor("#111827"),
-        spaceBefore=8, spaceAfter=7
+        fontSize=9.5, leading=11, textColor=colors.HexColor("#111827"),
+        spaceBefore=3, spaceAfter=4
     ))
     styles.add(ParagraphStyle(
-        name="BodyPro", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=9.5, leading=14, textColor=colors.HexColor("#344054")
-    ))
-    styles.add(ParagraphStyle(
-        name="ValueBig", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=18, leading=22, textColor=colors.HexColor("#111827"),
+        name="BigValue", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=19, leading=21, textColor=colors.HexColor("#111827"),
         alignment=TA_RIGHT
     ))
     styles.add(ParagraphStyle(
-        name="CenterSmall", parent=styles["SmallGray"], alignment=TA_CENTER
+        name="Center", parent=styles["Normal"], fontName="Helvetica",
+        fontSize=7.2, leading=9, textColor=colors.HexColor("#667085"),
+        alignment=TA_CENTER
     ))
+    styles.add(ParagraphStyle(
+        name="CenterBold", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=7.6, leading=9.2, textColor=colors.HexColor("#344054"),
+        alignment=TA_CENTER
+    ))
+
+    primary = colors.HexColor("#4F46E5")
+    light = colors.HexColor("#EEF2FF")
+    border = colors.HexColor("#D0D5DD")
+    soft = colors.HexColor("#F8FAFC")
+    gray = colors.HexColor("#667085")
+    dark = colors.HexColor("#111827")
 
     story = []
 
-    # Cabeçalho
+    # Cabeçalho premium
+    company = pdf_text(data.get("empresa") or "EMPRESA")
+    contact_parts = [
+        data.get("empresa_whatsapp"),
+        data.get("empresa_email"),
+        data.get("empresa_local"),
+        data.get("empresa_doc")
+    ]
+    contact = "<br/>".join(pdf_text(x) for x in contact_parts if str(x or "").strip())
+
+    badge = Table([
+        [Paragraph("<b>PROPOSTA<br/>COMERCIAL</b>", styles["CenterBold"])]
+    ], colWidths=[31*mm], rowHeights=[14*mm])
+    badge.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1),light),
+        ("BOX",(0,0),(-1,-1),0.7,primary),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("LEFTPADDING",(0,0),(-1,-1),3),
+        ("RIGHTPADDING",(0,0),(-1,-1),3),
+    ]))
+
     header_left = [
-        Paragraph(pdf_text(data.get("empresa","EMPRESA")), styles["TitlePro"]),
+        Paragraph(company, styles["Brand"]),
         Paragraph(
             f"Orçamento nº <b>{numero}</b> &nbsp; • &nbsp; Emitido em {data_emissao}",
-            styles["SmallGray"]
+            styles["Tiny"]
         )
     ]
-    contact = "<br/>".join(filter(None, [
-        pdf_text(data.get("empresa_whatsapp","")),
-        pdf_text(data.get("empresa_email","")),
-        pdf_text(data.get("empresa_local",""))
-    ]))
-    header = Table([[header_left, Paragraph(contact, styles["SmallGray"])]],
-                   colWidths=[112*mm, 62*mm])
+    header = Table(
+        [[header_left, Paragraph(contact, styles["Tiny"]), badge]],
+        colWidths=[92*mm, 51*mm, 31*mm]
+    )
     header.setStyle(TableStyle([
         ("VALIGN",(0,0),(-1,-1),"TOP"),
         ("ALIGN",(1,0),(1,0),"RIGHT"),
+        ("ALIGN",(2,0),(2,0),"RIGHT"),
         ("LEFTPADDING",(0,0),(-1,-1),0),
         ("RIGHTPADDING",(0,0),(-1,-1),0),
         ("TOPPADDING",(0,0),(-1,-1),0),
-        ("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("BOTTOMPADDING",(0,0),(-1,-1),0),
     ]))
-    story += [header, Spacer(1,5*mm), HRFlowable(width="100%", thickness=1, color=colors.HexColor("#D0D5DD")), Spacer(1,5*mm)]
+    story += [header, Spacer(1,2.5*mm),
+              HRFlowable(width="100%", thickness=1.1, color=primary),
+              Spacer(1,2.5*mm)]
 
     # Cliente
     story.append(Paragraph("DADOS DO CLIENTE", styles["Section"]))
     cliente_data = [
-        [Paragraph("<b>Cliente</b>", styles["SmallGray"]), Paragraph("<b>WhatsApp</b>", styles["SmallGray"])],
-        [Paragraph(pdf_text(data.get("cliente","")), styles["BodyPro"]),
-         Paragraph(pdf_text(data.get("whatsapp","")), styles["BodyPro"])],
-        [Paragraph("<b>Endereço</b>", styles["SmallGray"]), ""],
-        [Paragraph(pdf_text(data.get("endereco","")) or "Não informado", styles["BodyPro"]), ""]
+        [Paragraph("CLIENTE", styles["Label"]),
+         Paragraph("WHATSAPP", styles["Label"])],
+        [Paragraph(pdf_text(data.get("cliente")), styles["Body"]),
+         Paragraph(pdf_text(data.get("whatsapp")) or "Não informado", styles["Body"])],
+        [Paragraph("ENDEREÇO", styles["Label"]), ""],
+        [Paragraph(pdf_text(data.get("endereco")) or "Não informado", styles["Body"]), ""]
     ]
-    t = Table(cliente_data, colWidths=[105*mm, 69*mm])
+    t = Table(cliente_data, colWidths=[111*mm, 63*mm])
     t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F2F4F7")),
-        ("SPAN",(0,2),(-1,2)),
-        ("SPAN",(0,3),(-1,3)),
-        ("BOX",(0,0),(-1,-1),0.6,colors.HexColor("#D0D5DD")),
-        ("INNERGRID",(0,0),(-1,1),0.4,colors.HexColor("#E4E7EC")),
-        ("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),
-        ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ("BACKGROUND",(0,0),(-1,0),soft),
+        ("SPAN",(0,2),(-1,2)), ("SPAN",(0,3),(-1,3)),
+        ("BOX",(0,0),(-1,-1),0.55,border),
+        ("INNERGRID",(0,0),(-1,1),0.35,colors.HexColor("#E4E7EC")),
+        ("LEFTPADDING",(0,0),(-1,-1),7),("RIGHTPADDING",(0,0),(-1,-1),7),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
     ]))
-    story += [t, Spacer(1,4*mm)]
+    story += [t, Spacer(1,2.3*mm)]
 
     # Serviço
-    story.append(Paragraph("SERVIÇO / PROPOSTA", styles["Section"]))
-    service_box = Table([
-        [Paragraph("<b>Serviço</b>", styles["SmallGray"]),
-         Paragraph("<b>Prazo</b>", styles["SmallGray"])],
-        [Paragraph(pdf_text(data.get("servico","")), styles["BodyPro"]),
-         Paragraph(pdf_text(data.get("prazo","")) or "A combinar", styles["BodyPro"])],
-        [Paragraph("<b>Descrição</b>", styles["SmallGray"]), ""],
-        [Paragraph(pdf_text(data.get("descricao","")) or "Sem descrição adicional.", styles["BodyPro"]), ""],
-    ], colWidths=[125*mm, 49*mm])
-    service_box.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F2F4F7")),
-        ("SPAN",(0,2),(-1,2)),("SPAN",(0,3),(-1,3)),
-        ("BOX",(0,0),(-1,-1),0.6,colors.HexColor("#D0D5DD")),
-        ("INNERGRID",(0,0),(-1,1),0.4,colors.HexColor("#E4E7EC")),
-        ("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),
-        ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+    story.append(Paragraph("SERVIÇO / ESCOPO DA PROPOSTA", styles["Section"]))
+    service = [
+        [Paragraph("SERVIÇO", styles["Label"]),
+         Paragraph("PRAZO", styles["Label"]),
+         Paragraph("GARANTIA", styles["Label"])],
+        [Paragraph(pdf_text(data.get("servico")), styles["Body"]),
+         Paragraph(pdf_text(data.get("prazo")) or "A combinar", styles["Body"]),
+         Paragraph(pdf_text(data.get("garantia")) or "A combinar", styles["Body"])],
+        [Paragraph("DESCRIÇÃO", styles["Label"]), "", ""],
+        [Paragraph(pdf_text(short(data.get("descricao"), 700)) or "Sem descrição adicional.", styles["Body"]), "", ""]
+    ]
+    st = Table(service, colWidths=[92*mm, 41*mm, 41*mm])
+    st.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),soft),
+        ("SPAN",(0,2),(-1,2)), ("SPAN",(0,3),(-1,3)),
+        ("BOX",(0,0),(-1,-1),0.55,border),
+        ("INNERGRID",(0,0),(-1,1),0.35,colors.HexColor("#E4E7EC")),
+        ("LEFTPADDING",(0,0),(-1,-1),7),("RIGHTPADDING",(0,0),(-1,-1),7),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
     ]))
-    story += [service_box, Spacer(1,5*mm)]
+    story += [st, Spacer(1,2.3*mm)]
 
-    # Valor em destaque
+    # Valor
+    total_text = money_br(valor)
     value_table = Table([
-        [Paragraph("VALOR TOTAL", styles["SmallGray"]), Paragraph(money_br(valor), styles["ValueBig"])]
-    ], colWidths=[90*mm, 84*mm])
+        [Paragraph("INVESTIMENTO TOTAL", styles["Label"]),
+         Paragraph(total_text, styles["BigValue"])]
+    ], colWidths=[105*mm, 69*mm])
     value_table.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#F9FAFB")),
-        ("BOX",(0,0),(-1,-1),0.8,colors.HexColor("#D0D5DD")),
-        ("LEFTPADDING",(0,0),(-1,-1),10),("RIGHTPADDING",(0,0),(-1,-1),10),
-        ("TOPPADDING",(0,0),(-1,-1),10),("BOTTOMPADDING",(0,0),(-1,-1),10),
+        ("BACKGROUND",(0,0),(-1,-1),light),
+        ("BOX",(0,0),(-1,-1),0.9,primary),
+        ("LINEBEFORE",(1,0),(1,0),0.5,colors.HexColor("#C7D2FE")),
+        ("LEFTPADDING",(0,0),(-1,-1),9),("RIGHTPADDING",(0,0),(-1,-1),9),
+        ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
     ]))
-    story += [value_table, Spacer(1,5*mm)]
+    story += [value_table, Spacer(1,2.3*mm)]
 
-    # Condições
-    story.append(Paragraph("CONDIÇÕES COMERCIAIS", styles["Section"]))
+    # Condições em 4 blocos
     conditions = [
-        ["Validade do orçamento", data.get("validade","") or "Não informado"],
-        ["Forma de pagamento", data.get("pagamento","") or "A combinar"],
+        ("VALIDADE", data.get("validade") or "Não informada"),
+        ("PAGAMENTO", data.get("pagamento") or "A combinar"),
+        ("GARANTIA", data.get("garantia") or "A combinar"),
+        ("DESCONTO", money_br(desconto) if desconto else "Sem desconto"),
     ]
-    ct = Table([[Paragraph(f"<b>{pdf_text(k)}</b>", styles["SmallGray"]),
-                 Paragraph(pdf_text(v), styles["BodyPro"])] for k,v in conditions],
-               colWidths=[58*mm,116*mm])
-    ct.setStyle(TableStyle([
-        ("BOX",(0,0),(-1,-1),0.6,colors.HexColor("#D0D5DD")),
-        ("INNERGRID",(0,0),(-1,-1),0.4,colors.HexColor("#E4E7EC")),
-        ("BACKGROUND",(0,0),(0,-1),colors.HexColor("#F2F4F7")),
-        ("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),
-        ("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7),
+    cells = []
+    for label, value in conditions:
+        cells.append(
+            [Paragraph(label, styles["Label"]),
+             Paragraph(pdf_text(value), styles["Body"])]
+        )
+
+    cond_table = Table(
+        [[cells[0], cells[1], cells[2], cells[3]]],
+        colWidths=[43.5*mm]*4
+    )
+    cond_table.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1),soft),
+        ("BOX",(0,0),(-1,-1),0.55,border),
+        ("INNERGRID",(0,0),(-1,-1),0.35,colors.HexColor("#E4E7EC")),
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),
+        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
     ]))
-    story += [ct, Spacer(1,5*mm)]
+    story += [Paragraph("CONDIÇÕES COMERCIAIS", styles["Section"]),
+              cond_table, Spacer(1,2.3*mm)]
 
-    if data.get("observacoes","").strip():
-        story.append(Paragraph("OBSERVAÇÕES", styles["Section"]))
-        obs = Table([[Paragraph(pdf_text(data["observacoes"]), styles["BodyPro"])]],
-                    colWidths=[174*mm])
-        obs.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#FFFCF5")),
-            ("BOX",(0,0),(-1,-1),0.6,colors.HexColor("#D0D5DD")),
-            ("LEFTPADDING",(0,0),(-1,-1),9),("RIGHTPADDING",(0,0),(-1,-1),9),
-            ("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8),
-        ]))
-        story += [obs, Spacer(1,6*mm)]
+    # Observações
+    obs_text = pdf_text(short(data.get("observacoes"), 560)) or "Nenhuma observação adicional."
+    obs = Table([
+        [Paragraph("OBSERVAÇÕES", styles["Label"])],
+        [Paragraph(obs_text, styles["Body"])]
+    ], colWidths=[174*mm])
+    obs.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#FFFDF5")),
+        ("BACKGROUND",(0,1),(-1,1),colors.HexColor("#FFFEFA")),
+        ("BOX",(0,0),(-1,-1),0.55,border),
+        ("LINEBELOW",(0,0),(-1,0),0.35,colors.HexColor("#E4E7EC")),
+        ("LEFTPADDING",(0,0),(-1,-1),7),("RIGHTPADDING",(0,0),(-1,-1),7),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+    ]))
+    story += [obs, Spacer(1,2.8*mm)]
 
-    # Assinaturas
+    # Aprovação / assinaturas
     story.append(Paragraph("APROVAÇÃO", styles["Section"]))
     sign = Table([
-        [Spacer(1,15*mm), Spacer(1,15*mm)],
-        [Paragraph("__________________________________", styles["CenterSmall"]),
-         Paragraph("__________________________________", styles["CenterSmall"])],
-        [Paragraph(pdf_text(data.get("empresa","")), styles["CenterSmall"]),
-         Paragraph(pdf_text(data.get("cliente","")), styles["CenterSmall"])],
-        [Paragraph("Responsável pela proposta", styles["CenterSmall"]),
-         Paragraph("Cliente / Aprovação", styles["CenterSmall"])]
+        [Spacer(1,9*mm), Spacer(1,9*mm)],
+        [Paragraph("________________________________", styles["Center"]),
+         Paragraph("________________________________", styles["Center"])],
+        [Paragraph(pdf_text(data.get("empresa")) or "Responsável", styles["Center"]),
+         Paragraph(pdf_text(data.get("cliente")) or "Cliente", styles["Center"])],
+        [Paragraph("Responsável pela proposta", styles["Center"]),
+         Paragraph("Cliente / Aprovação", styles["Center"])]
     ], colWidths=[87*mm,87*mm])
     sign.setStyle(TableStyle([
         ("VALIGN",(0,0),(-1,-1),"BOTTOM"),
         ("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),
+        ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
     ]))
     story.append(sign)
-    story += [Spacer(1,7*mm),
-              HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#D0D5DD")),
-              Spacer(1,3*mm),
-              Paragraph("Obrigado pela oportunidade. Este documento representa a proposta comercial descrita acima.",
-                        styles["CenterSmall"])]
+
+    story += [
+        Spacer(1,1.5*mm),
+        HRFlowable(width="100%", thickness=0.5, color=border),
+        Spacer(1,1.2*mm),
+        Paragraph(
+            "Obrigado pela oportunidade. Este documento representa a proposta comercial descrita acima.",
+            styles["Center"]
+        )
+    ]
 
     def footer(canvas, doc):
         canvas.saveState()
-        canvas.setFont("Helvetica", 7.5)
-        canvas.setFillColor(colors.HexColor("#98A2B3"))
-        canvas.drawString(18*mm, 9*mm, f"Orçamento {numero} • {data.get('empresa','')}")
-        canvas.drawRightString(192*mm, 9*mm, f"Página {doc.page}")
+        canvas.setStrokeColor(colors.HexColor("#E4E7EC"))
+        canvas.setLineWidth(0.4)
+        canvas.line(12*mm, 8.5*mm, 198*mm, 8.5*mm)
+        canvas.setFont("Helvetica", 6.8)
+        canvas.setFillColor(gray)
+        canvas.drawString(12*mm, 5.5*mm, f"Orçamento {numero} • {data.get('empresa','')}")
+        canvas.drawRightString(198*mm, 5.5*mm, f"Página {doc.page}")
         canvas.restoreState()
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     buffer.seek(0)
     return buffer, numero
+
+# ============================================================
+# ROTAS
+# ============================================================
 
 @app.route("/", methods=["GET"])
 def index():
@@ -310,19 +470,29 @@ def gerar_pdf():
         return render_template_string(HTML, data=data), 400
 
     filename = f"orcamento_{numero}.pdf"
-    return send_file(pdf, mimetype="application/pdf", as_attachment=True, download_name=filename)
+    return send_file(
+        pdf,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename
+    )
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     data = request.form.to_dict()
-    phone = clean_phone(data.get("whatsapp",""))
+    phone = clean_phone(data.get("whatsapp", ""))
     if not phone:
         return "Informe o WhatsApp do cliente.", 400
-    valor = parse_money(data.get("valor"))
+
+    try:
+        valor = parse_money(data.get("valor"))
+    except Exception:
+        valor = 0.0
+
     text = (
         f"Olá, {data.get('cliente','')}! "
-        f"Segue o orçamento da {data.get('empresa','')} para {data.get('servico','')}. "
-        f"Valor: {money_br(valor)}. "
+        f"Segue a proposta da {data.get('empresa','')} para {data.get('servico','')}. "
+        f"Valor total: {money_br(valor)}. "
         f"Prazo: {data.get('prazo','a combinar')}. "
         f"Validade: {data.get('validade','não informada')}."
     )
