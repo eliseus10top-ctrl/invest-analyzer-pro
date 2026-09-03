@@ -1,862 +1,3911 @@
-import os
-import re
-import time
-import threading
-from datetime import datetime, timezone
+Perfeito. Vou montar uma versão standalone, pensada para o Render, sem Google Colab, sem IPython e sem depender de arquivos HTML externos.
+Ela terá:
+🇧🇷 Ações brasileiras
+🇧🇷 FIIs
+🇺🇸 Ações dos EUA
+🔎 Busca automática de ticker
+💰 Preço atual
+📈 Variação diária, semanal, mensal e anual
+📊 Médias móveis
+📉 RSI
+📊 MACD
+📈 Volatilidade
+💵 Dividend Yield quando disponível
+📌 P/L, P/VP e outros fundamentos quando o Yahoo disponibilizar
+⭐ Nota automática de 0–10
+⚠️ Classificação de risco
+🔥 Oportunidades
+🏆 Ranking
+💼 Carteira
+Quantidade
+Preço médio
+Patrimônio
+Lucro/prejuízo
+Rentabilidade
+📊 Gráficos
+📥 Exportação para Excel
+📱 Interface responsiva para celular
+🛡️ Tratamento de erros do Yahoo Finance
+🚀 Compatível com gunicorn app:app no Render
+Importante: como você quer colocar diretamente no app.py, o código abaixo não precisa de templates/ nem de static/.
+app.py
+Substitua todo o conteúdo atual do seu app.py por este:
+# ================================================================
+# 🚀 INVEST ANALYZER PRO 6.0
+# Flask + Yahoo Finance + Carteira + Indicadores + Ranking
+# Compatível com Render
+# ================================================================
 
-from flask import Flask, jsonify, request, session, render_template_string
+import os
+import io
+import math
+import time
+import traceback
+from datetime import datetime, timedelta
+
+from flask import Flask, request, jsonify, send_file, render_template_string
+
+import pandas as pd
+import numpy as np
 import yfinance as yf
 
-# ============================================================
-# INVEST ANALYZER PRO
-# Flask + Render + Yahoo Finance
-# Carteira com cache para evitar "Too Many Requests"
-# ============================================================
+
+# ================================================================
+# CONFIGURAÇÃO
+# ================================================================
 
 app = Flask(__name__)
 
-# Use a strong SECRET_KEY environment variable on Render.
-app.secret_key = os.environ.get("SECRET_KEY", "invest-analyzer-change-this-key")
+app.config["JSON_SORT_KEYS"] = False
 
-# ------------------------------------------------------------
-# Configuração do cache
-# ------------------------------------------------------------
-CACHE_TTL_SECONDS = int(os.environ.get("YAHOO_CACHE_TTL", "600"))  # 10 min
-REQUEST_DELAY_SECONDS = float(os.environ.get("YAHOO_REQUEST_DELAY", "1.0"))
+PORT = int(os.environ.get("PORT", 10000))
 
-_price_cache = {}
-_cache_lock = threading.Lock()
-_last_yahoo_request = 0.0
-_request_lock = threading.Lock()
+CACHE = {}
+CACHE_TIME = 300  # 5 minutos
 
 
-# ============================================================
-# UTILIDADES
-# ============================================================
+# ================================================================
+# FUNÇÕES AUXILIARES
+# ================================================================
 
-def normalize_symbol(symbol):
-    """
-    Converte automaticamente ações brasileiras:
-      XPLG11 -> XPLG11.SA
-      PETR4  -> PETR4.SA
-      VALE3  -> VALE3.SA
-
-    Símbolos americanos continuam iguais:
-      AAPL -> AAPL
-      MSFT -> MSFT
-      NVDA -> NVDA
-
-    Se o usuário já informar .SA, mantém.
-    """
-    if not symbol:
-        return ""
-
-    symbol = str(symbol).strip().upper().replace(" ", "")
-
-    if symbol.endswith(".SA"):
-        return symbol
-
-    # A maioria dos tickers B3 possui 4 letras + 1 ou 2 números.
-    if re.fullmatch(r"[A-Z]{4}\d{1,2}", symbol):
-        return symbol + ".SA"
-
-    return symbol
-
-
-def display_symbol(symbol):
-    """Remove .SA apenas para exibição."""
-    symbol = normalize_symbol(symbol)
-    return symbol[:-3] if symbol.endswith(".SA") else symbol
-
-
-def to_float(value, default=0.0):
+def safe_float(value, default=None):
     try:
-        value = float(value)
-        if value != value:  # NaN
+        if value is None:
             return default
-        return value
-    except (TypeError, ValueError):
+
+        if isinstance(value, (float, np.floating)):
+            if np.isnan(value) or np.isinf(value):
+                return default
+
+        if isinstance(value, str):
+            value = value.replace("%", "").replace(",", ".").strip()
+
+        result = float(value)
+
+        if math.isnan(result) or math.isinf(result):
+            return default
+
+        return result
+
+    except Exception:
         return default
 
 
-def format_brl(value):
-    value = to_float(value)
-    text = f"{value:,.2f}"
-    return "R$ " + text.replace(",", "X").replace(".", ",").replace("X", ".")
+def clean_number(value, decimals=2):
+    value = safe_float(value)
+
+    if value is None:
+        return None
+
+    return round(value, decimals)
 
 
-def now_timestamp():
-    return datetime.now(timezone.utc).isoformat()
+def money_br(value):
+    value = safe_float(value)
+
+    if value is None:
+        return "N/D"
+
+    return "R$ {:,.2f}".format(value).replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-# ============================================================
-# CACHE / YAHOO FINANCE
-# ============================================================
+def money_us(value):
+    value = safe_float(value)
 
-def get_cached_price(symbol):
-    """
-    Retorna preço em cache se ainda estiver dentro do TTL.
-    """
-    with _cache_lock:
-        item = _price_cache.get(symbol)
+    if value is None:
+        return "N/D"
 
-        if not item:
-            return None
-
-        age = time.time() - item["timestamp"]
-
-        if age <= CACHE_TTL_SECONDS:
-            return item.copy()
-
-        # Mantemos o item expirado como fallback.
-        return {
-            **item,
-            "expired": True,
-            "age": age
-        }
+    return "$ {:,.2f}".format(value)
 
 
-def save_price_cache(symbol, data):
-    with _cache_lock:
-        _price_cache[symbol] = {
-            **data,
-            "timestamp": time.time(),
-            "updated_at": now_timestamp()
-        }
+def pct(value):
+    value = safe_float(value)
+
+    if value is None:
+        return "N/D"
+
+    return "{:+.2f}%".format(value)
 
 
-def wait_before_yahoo_request():
-    """
-    Evita disparar várias requisições seguidas.
-    """
-    global _last_yahoo_request
+def normalize_ticker(ticker):
+    if not ticker:
+        return ""
 
-    with _request_lock:
-        elapsed = time.time() - _last_yahoo_request
+    ticker = str(ticker).upper().strip()
 
-        if elapsed < REQUEST_DELAY_SECONDS:
-            time.sleep(REQUEST_DELAY_SECONDS - elapsed)
+    ticker = ticker.replace(" ", "")
 
-        _last_yahoo_request = time.time()
+    # Yahoo Finance Brasil
+    if (
+        ticker.endswith("11")
+        or ticker.endswith("3")
+        or ticker.endswith("4")
+        or ticker.endswith("5")
+        or ticker.endswith("6")
+        or ticker.endswith("7")
+        or ticker.endswith("8")
+    ):
+        if not ticker.endswith(".SA"):
+            return ticker + ".SA"
+
+    return ticker
 
 
-def fetch_yahoo_price(symbol):
-    """
-    Busca o último preço disponível no Yahoo Finance.
-    Usa histórico de poucos dias para reduzir chamadas e
-    evita Ticker.info, que costuma gerar muitas requisições.
-    """
-    yahoo_symbol = normalize_symbol(symbol)
+def display_ticker(ticker):
+    if ticker.endswith(".SA"):
+        return ticker[:-3]
 
-    # 1) Cache válido
-    cached = get_cached_price(yahoo_symbol)
-    if cached and not cached.get("expired"):
-        return {
-            "ok": True,
-            "symbol": yahoo_symbol,
-            "price": cached["price"],
-            "currency": cached.get("currency", "BRL" if yahoo_symbol.endswith(".SA") else "USD"),
-            "source": "cache",
-            "updated_at": cached.get("updated_at")
-        }
+    return ticker
 
-    # 2) Se existe cache expirado, tentamos atualizar.
-    # Se o Yahoo falhar, o último preço ainda poderá ser usado.
-    stale_cache = cached
+
+def is_brazilian(ticker):
+    return ticker.endswith(".SA")
+
+
+def get_currency(ticker):
+    return "BRL" if is_brazilian(ticker) else "USD"
+
+
+# ================================================================
+# CACHE
+# ================================================================
+
+def cache_get(key):
+    item = CACHE.get(key)
+
+    if not item:
+        return None
+
+    timestamp, data = item
+
+    if time.time() - timestamp > CACHE_TIME:
+        CACHE.pop(key, None)
+        return None
+
+    return data
+
+
+def cache_set(key, data):
+    CACHE[key] = (time.time(), data)
+
+
+# ================================================================
+# DOWNLOAD YAHOO FINANCE
+# ================================================================
+
+def download_history(ticker, period="1y", interval="1d"):
+
+    cache_key = f"HISTORY:{ticker}:{period}:{interval}"
+
+    cached = cache_get(cache_key)
+
+    if cached is not None:
+        return cached
 
     try:
-        wait_before_yahoo_request()
-
-        ticker = yf.Ticker(yahoo_symbol)
-
-        # Uma única chamada de histórico.
-        history = ticker.history(
-            period="5d",
-            interval="1d",
+        data = yf.download(
+            ticker,
+            period=period,
+            interval=interval,
             auto_adjust=False,
-            actions=False
+            progress=False,
+            threads=False
         )
 
-        if history is None or history.empty:
-            raise RuntimeError("Yahoo Finance não retornou dados para este ativo.")
+        if data is None or data.empty:
+            return pd.DataFrame()
 
-        # Último fechamento/preço disponível.
-        close_series = history["Close"].dropna()
+        # Corrige MultiIndex do yfinance
+        if isinstance(data.columns, pd.MultiIndex):
+            try:
+                data.columns = data.columns.get_level_values(0)
+            except Exception:
+                data.columns = [
+                    c[0] if isinstance(c, tuple) else c
+                    for c in data.columns
+                ]
 
-        if close_series.empty:
-            raise RuntimeError("Não foi possível encontrar um preço válido.")
+        data = data.copy()
 
-        price = to_float(close_series.iloc[-1])
+        required = ["Open", "High", "Low", "Close", "Volume"]
 
-        if price <= 0:
-            raise RuntimeError("Yahoo Finance retornou um preço inválido.")
+        for col in required:
+            if col not in data.columns:
+                data[col] = np.nan
 
-        currency = "BRL" if yahoo_symbol.endswith(".SA") else "USD"
+        data = data.dropna(subset=["Close"])
 
-        data = {
-            "price": price,
-            "currency": currency,
-            "source": "Yahoo Finance"
+        cache_set(cache_key, data)
+
+        return data
+
+    except Exception:
+        return pd.DataFrame()
+
+
+# ================================================================
+# INDICADORES
+# ================================================================
+
+def calculate_rsi(series, period=14):
+
+    try:
+        delta = series.diff()
+
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+
+        avg_gain = gain.rolling(period).mean()
+        avg_loss = loss.rolling(period).mean()
+
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+
+        rsi = 100 - (100 / (1 + rs))
+
+        return rsi
+
+    except Exception:
+        return pd.Series(index=series.index, dtype=float)
+
+
+def calculate_macd(series):
+
+    try:
+        ema12 = series.ewm(span=12, adjust=False).mean()
+        ema26 = series.ewm(span=26, adjust=False).mean()
+
+        macd = ema12 - ema26
+        signal = macd.ewm(span=9, adjust=False).mean()
+
+        histogram = macd - signal
+
+        return macd, signal, histogram
+
+    except Exception:
+        empty = pd.Series(index=series.index, dtype=float)
+        return empty, empty, empty
+
+
+def calculate_indicators(data):
+
+    if data.empty:
+        return {}
+
+    close = data["Close"]
+
+    try:
+        current = safe_float(close.iloc[-1])
+
+        previous = safe_float(close.iloc[-2]) if len(close) >= 2 else None
+
+        week = safe_float(close.iloc[-6]) if len(close) >= 6 else None
+
+        month = safe_float(close.iloc[-22]) if len(close) >= 22 else None
+
+        year = safe_float(close.iloc[0]) if len(close) > 1 else None
+
+        daily_change = (
+            ((current / previous) - 1) * 100
+            if current is not None and previous not in (None, 0)
+            else None
+        )
+
+        weekly_change = (
+            ((current / week) - 1) * 100
+            if current is not None and week not in (None, 0)
+            else None
+        )
+
+        monthly_change = (
+            ((current / month) - 1) * 100
+            if current is not None and month not in (None, 0)
+            else None
+        )
+
+        yearly_change = (
+            ((current / year) - 1) * 100
+            if current is not None and year not in (None, 0)
+            else None
+        )
+
+        sma20 = close.rolling(20).mean()
+        sma50 = close.rolling(50).mean()
+        sma200 = close.rolling(200).mean()
+
+        ema20 = close.ewm(span=20, adjust=False).mean()
+        ema50 = close.ewm(span=50, adjust=False).mean()
+
+        rsi = calculate_rsi(close)
+
+        macd, signal, histogram = calculate_macd(close)
+
+        returns = close.pct_change().dropna()
+
+        volatility = (
+            float(returns.std() * np.sqrt(252) * 100)
+            if len(returns) > 10
+            else None
+        )
+
+        high52 = safe_float(close.max())
+
+        low52 = safe_float(close.min())
+
+        distance_high = (
+            ((current / high52) - 1) * 100
+            if current is not None and high52 not in (None, 0)
+            else None
+        )
+
+        distance_low = (
+            ((current / low52) - 1) * 100
+            if current is not None and low52 not in (None, 0)
+            else None
+        )
+
+        result = {
+            "current": clean_number(current),
+            "previous": clean_number(previous),
+
+            "daily_change": clean_number(daily_change),
+            "weekly_change": clean_number(weekly_change),
+            "monthly_change": clean_number(monthly_change),
+            "yearly_change": clean_number(yearly_change),
+
+            "sma20": clean_number(sma20.iloc[-1]),
+            "sma50": clean_number(sma50.iloc[-1]),
+            "sma200": clean_number(sma200.iloc[-1]),
+
+            "ema20": clean_number(ema20.iloc[-1]),
+            "ema50": clean_number(ema50.iloc[-1]),
+
+            "rsi": clean_number(rsi.iloc[-1]),
+
+            "macd": clean_number(macd.iloc[-1]),
+            "macd_signal": clean_number(signal.iloc[-1]),
+            "macd_histogram": clean_number(histogram.iloc[-1]),
+
+            "volatility": clean_number(volatility),
+
+            "high52": clean_number(high52),
+            "low52": clean_number(low52),
+
+            "distance_high": clean_number(distance_high),
+            "distance_low": clean_number(distance_low),
         }
 
-        save_price_cache(yahoo_symbol, data)
+        return result
 
-        return {
-            "ok": True,
-            "symbol": yahoo_symbol,
-            "price": price,
-            "currency": currency,
-            "source": "Yahoo Finance",
-            "updated_at": now_timestamp()
-        }
-
-    except Exception as exc:
-        error_text = str(exc)
-
-        # 3) Fallback: último preço conhecido
-        if stale_cache and stale_cache.get("price"):
-            return {
-                "ok": True,
-                "symbol": yahoo_symbol,
-                "price": stale_cache["price"],
-                "currency": stale_cache.get(
-                    "currency",
-                    "BRL" if yahoo_symbol.endswith(".SA") else "USD"
-                ),
-                "source": "último preço em cache",
-                "warning": "Yahoo Finance está temporariamente indisponível ou limitou as requisições.",
-                "updated_at": stale_cache.get("updated_at")
-            }
-
-        return {
-            "ok": False,
-            "symbol": yahoo_symbol,
-            "price": None,
-            "error": (
-                "Não foi possível consultar o Yahoo Finance agora. "
-                "Aguarde alguns minutos e tente novamente."
-            ),
-            "details": error_text[:300]
-        }
+    except Exception:
+        return {}
 
 
-# ============================================================
-# CARTEIRA
-# ============================================================
+# ================================================================
+# FUNDAMENTOS
+# ================================================================
 
-def get_portfolio():
-    portfolio = session.get("portfolio", [])
-    if not isinstance(portfolio, list):
-        portfolio = []
-    return portfolio
+def get_fundamentals(ticker):
 
+    cache_key = f"FUND:{ticker}"
 
-def save_portfolio(portfolio):
-    session["portfolio"] = portfolio
-    session.modified = True
+    cached = cache_get(cache_key)
 
+    if cached is not None:
+        return cached
 
-def calculate_portfolio(refresh_prices=False):
-    portfolio = get_portfolio()
+    result = {
+        "name": display_ticker(ticker),
+        "long_name": display_ticker(ticker),
 
-    total_invested = 0.0
-    total_value = 0.0
-    items = []
+        "sector": "N/D",
+        "industry": "N/D",
 
-    for item in portfolio:
-        symbol = normalize_symbol(item.get("symbol", ""))
-        quantity = to_float(item.get("quantity", 0))
-        average_price = to_float(item.get("average_price", 0))
+        "market_cap": None,
 
-        invested = quantity * average_price
-        total_invested += invested
+        "pe": None,
+        "forward_pe": None,
 
-        price_data = fetch_yahoo_price(symbol)
-        current_price = price_data.get("price") if price_data.get("ok") else None
+        "pb": None,
 
-        if current_price is not None:
-            current_value = quantity * current_price
-        else:
-            current_value = 0.0
+        "eps": None,
 
-        profit = current_value - invested
+        "dividend_yield": None,
+        "dividend_rate": None,
 
-        profitability = (profit / invested * 100) if invested else 0.0
+        "profit_margin": None,
+        "roe": None,
 
-        items.append({
-            "symbol": display_symbol(symbol),
-            "yahoo_symbol": symbol,
-            "quantity": quantity,
-            "average_price": average_price,
-            "invested": invested,
-            "current_price": current_price,
-            "current_value": current_value,
-            "profit": profit,
-            "profitability": profitability,
-            "currency": price_data.get("currency"),
-            "price_source": price_data.get("source"),
-            "warning": price_data.get("warning"),
-            "error": price_data.get("error")
-        })
+        "debt_to_equity": None,
 
-        total_value += current_value
+        "revenue_growth": None,
+        "earnings_growth": None,
 
-    profit_total = total_value - total_invested
-    profitability_total = (
-        profit_total / total_invested * 100
-        if total_invested
-        else 0.0
-    )
+        "target_mean": None,
 
-    return {
-        "items": items,
-        "summary": {
-            "invested": total_invested,
-            "value": total_value,
-            "profit": profit_total,
-            "profitability": profitability_total
-        }
+        "52w_high": None,
+        "52w_low": None,
+
+        "currency": get_currency(ticker)
     }
 
-
-# ============================================================
-# ROTAS API
-# ============================================================
-
-@app.get("/health")
-def health():
-    return jsonify({
-        "status": "ok",
-        "service": "Invest Analyzer Pro",
-        "time": now_timestamp()
-    })
-
-
-@app.get("/api/portfolio")
-def api_portfolio():
     try:
-        return jsonify({
-            "ok": True,
-            **calculate_portfolio()
-        })
-    except Exception as exc:
-        return jsonify({
-            "ok": False,
-            "error": str(exc)
-        }), 500
+        info = {}
+
+        try:
+            info = yf.Ticker(ticker).info
+        except Exception:
+            info = {}
+
+        if not isinstance(info, dict):
+            info = {}
+
+        result["long_name"] = (
+            info.get("longName")
+            or info.get("shortName")
+            or display_ticker(ticker)
+        )
+
+        result["sector"] = info.get("sector") or "N/D"
+
+        result["industry"] = info.get("industry") or "N/D"
+
+        result["market_cap"] = safe_float(info.get("marketCap"))
+
+        result["pe"] = safe_float(
+            info.get("trailingPE")
+        )
+
+        result["forward_pe"] = safe_float(
+            info.get("forwardPE")
+        )
+
+        result["pb"] = safe_float(
+            info.get("priceToBook")
+        )
+
+        result["eps"] = safe_float(
+            info.get("trailingEps")
+        )
+
+        dividend = info.get("dividendYield")
+
+        if dividend is not None:
+
+            dividend = safe_float(dividend)
+
+            if dividend is not None:
+
+                # Yahoo pode retornar 0.05 = 5%
+                if abs(dividend) < 1:
+                    dividend *= 100
+
+        result["dividend_yield"] = dividend
+
+        result["dividend_rate"] = safe_float(
+            info.get("dividendRate")
+        )
+
+        margin = safe_float(info.get("profitMargins"))
+
+        if margin is not None and abs(margin) < 1:
+            margin *= 100
+
+        result["profit_margin"] = margin
+
+        roe = safe_float(info.get("returnOnEquity"))
+
+        if roe is not None and abs(roe) < 1:
+            roe *= 100
+
+        result["roe"] = roe
+
+        result["debt_to_equity"] = safe_float(
+            info.get("debtToEquity")
+        )
+
+        growth = safe_float(info.get("revenueGrowth"))
+
+        if growth is not None and abs(growth) < 1:
+            growth *= 100
+
+        result["revenue_growth"] = growth
+
+        growth2 = safe_float(info.get("earningsGrowth"))
+
+        if growth2 is not None and abs(growth2) < 1:
+            growth2 *= 100
+
+        result["earnings_growth"] = growth2
+
+        result["target_mean"] = safe_float(
+            info.get("targetMeanPrice")
+        )
+
+        result["52w_high"] = safe_float(
+            info.get("fiftyTwoWeekHigh")
+        )
+
+        result["52w_low"] = safe_float(
+            info.get("fiftyTwoWeekLow")
+        )
+
+        cache_set(cache_key, result)
+
+        return result
+
+    except Exception:
+
+        return result
 
 
-@app.post("/api/portfolio/add")
-def add_asset():
-    data = request.get_json(silent=True) or request.form
+# ================================================================
+# NOTA
+# ================================================================
 
-    symbol = normalize_symbol(data.get("symbol", ""))
-    quantity = to_float(data.get("quantity"))
-    average_price = to_float(
-        data.get("average_price", data.get("price"))
+def calculate_score(indicators, fundamentals):
+
+    score = 5.0
+
+    # ------------------------------------------------------------
+    # Tendência
+    # ------------------------------------------------------------
+
+    current = safe_float(indicators.get("current"))
+
+    sma20 = safe_float(indicators.get("sma20"))
+    sma50 = safe_float(indicators.get("sma50"))
+    sma200 = safe_float(indicators.get("sma200"))
+
+    if current and sma20:
+        score += 0.5 if current > sma20 else -0.5
+
+    if current and sma50:
+        score += 0.5 if current > sma50 else -0.5
+
+    if current and sma200:
+        score += 0.7 if current > sma200 else -0.7
+
+    # ------------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------------
+
+    rsi = safe_float(indicators.get("rsi"))
+
+    if rsi is not None:
+
+        if 45 <= rsi <= 65:
+            score += 0.6
+
+        elif 35 <= rsi < 45:
+            score += 0.2
+
+        elif rsi > 75:
+            score -= 0.8
+
+        elif rsi < 25:
+            score += 0.3
+
+    # ------------------------------------------------------------
+    # MACD
+    # ------------------------------------------------------------
+
+    histogram = safe_float(
+        indicators.get("macd_histogram")
     )
 
-    if not symbol:
-        return jsonify({"ok": False, "error": "Informe o código do ativo."}), 400
+    if histogram is not None:
 
-    if quantity <= 0:
-        return jsonify({"ok": False, "error": "A quantidade deve ser maior que zero."}), 400
+        if histogram > 0:
+            score += 0.5
+        else:
+            score -= 0.3
 
-    if average_price <= 0:
-        return jsonify({"ok": False, "error": "O preço médio deve ser maior que zero."}), 400
+    # ------------------------------------------------------------
+    # Crescimento
+    # ------------------------------------------------------------
 
-    portfolio = get_portfolio()
-
-    # Se o ativo já existir, soma a posição usando preço médio ponderado.
-    existing = next(
-        (x for x in portfolio if normalize_symbol(x.get("symbol")) == symbol),
-        None
+    revenue_growth = safe_float(
+        fundamentals.get("revenue_growth")
     )
 
-    if existing:
-        old_quantity = to_float(existing.get("quantity"))
-        old_average = to_float(existing.get("average_price"))
+    if revenue_growth is not None:
 
-        new_quantity = old_quantity + quantity
-        new_average = (
-            (old_quantity * old_average) +
-            (quantity * average_price)
-        ) / new_quantity
+        if revenue_growth > 15:
+            score += 0.6
 
-        existing["quantity"] = new_quantity
-        existing["average_price"] = new_average
+        elif revenue_growth > 5:
+            score += 0.3
+
+        elif revenue_growth < -10:
+            score -= 0.5
+
+    # ------------------------------------------------------------
+    # ROE
+    # ------------------------------------------------------------
+
+    roe = safe_float(
+        fundamentals.get("roe")
+    )
+
+    if roe is not None:
+
+        if roe > 20:
+            score += 0.7
+
+        elif roe > 10:
+            score += 0.3
+
+        elif roe < 0:
+            score -= 0.6
+
+    # ------------------------------------------------------------
+    # P/L
+    # ------------------------------------------------------------
+
+    pe = safe_float(
+        fundamentals.get("pe")
+    )
+
+    if pe is not None and pe > 0:
+
+        if pe < 10:
+            score += 0.5
+
+        elif pe < 18:
+            score += 0.3
+
+        elif pe > 35:
+            score -= 0.6
+
+        elif pe > 50:
+            score -= 1.0
+
+    # ------------------------------------------------------------
+    # Dívida
+    # ------------------------------------------------------------
+
+    debt = safe_float(
+        fundamentals.get("debt_to_equity")
+    )
+
+    if debt is not None:
+
+        if debt < 50:
+            score += 0.3
+
+        elif debt > 200:
+            score -= 0.6
+
+    # ------------------------------------------------------------
+    # Limite
+    # ------------------------------------------------------------
+
+    score = max(0, min(10, score))
+
+    return round(score, 1)
+
+
+# ================================================================
+# RISCO
+# ================================================================
+
+def calculate_risk(indicators):
+
+    volatility = safe_float(
+        indicators.get("volatility")
+    )
+
+    rsi = safe_float(
+        indicators.get("rsi")
+    )
+
+    if volatility is None:
+        return "Indeterminado"
+
+    risk_points = 0
+
+    if volatility < 15:
+        risk_points += 0
+
+    elif volatility < 30:
+        risk_points += 1
+
+    elif volatility < 50:
+        risk_points += 2
+
     else:
-        portfolio.append({
-            "symbol": symbol,
-            "quantity": quantity,
-            "average_price": average_price
-        })
+        risk_points += 3
 
-    save_portfolio(portfolio)
+    if rsi is not None:
 
-    return jsonify({
-        "ok": True,
-        "message": f"{display_symbol(symbol)} adicionado à carteira.",
-        **calculate_portfolio()
-    })
+        if rsi > 75:
+            risk_points += 1
 
+        if rsi < 20:
+            risk_points += 1
 
-@app.post("/api/portfolio/remove")
-def remove_asset():
-    data = request.get_json(silent=True) or request.form
-    symbol = normalize_symbol(data.get("symbol", ""))
+    if risk_points <= 0:
+        return "Baixo"
 
-    if not symbol:
-        return jsonify({"ok": False, "error": "Informe o ativo."}), 400
+    if risk_points <= 2:
+        return "Moderado"
 
-    portfolio = [
-        item for item in get_portfolio()
-        if normalize_symbol(item.get("symbol", "")) != symbol
-    ]
+    if risk_points <= 4:
+        return "Alto"
 
-    save_portfolio(portfolio)
-
-    return jsonify({
-        "ok": True,
-        "message": f"{display_symbol(symbol)} removido.",
-        **calculate_portfolio()
-    })
+    return "Muito alto"
 
 
-@app.post("/api/portfolio/clear")
-def clear_portfolio():
-    session.pop("portfolio", None)
+# ================================================================
+# SINAL
+# ================================================================
 
-    return jsonify({
-        "ok": True,
-        "message": "Carteira limpa.",
-        "items": [],
-        "summary": {
-            "invested": 0,
-            "value": 0,
-            "profit": 0,
-            "profitability": 0
+def calculate_signal(indicators, score):
+
+    current = safe_float(indicators.get("current"))
+    sma20 = safe_float(indicators.get("sma20"))
+    sma50 = safe_float(indicators.get("sma50"))
+    sma200 = safe_float(indicators.get("sma200"))
+
+    rsi = safe_float(indicators.get("rsi"))
+
+    macd_hist = safe_float(
+        indicators.get("macd_histogram")
+    )
+
+    points = 0
+
+    if current and sma20:
+        points += 1 if current > sma20 else -1
+
+    if current and sma50:
+        points += 1 if current > sma50 else -1
+
+    if current and sma200:
+        points += 1 if current > sma200 else -1
+
+    if macd_hist is not None:
+        points += 1 if macd_hist > 0 else -1
+
+    if rsi is not None:
+
+        if 40 <= rsi <= 70:
+            points += 1
+
+        elif rsi > 80:
+            points -= 1
+
+    if score >= 8 and points >= 2:
+        return "Forte"
+
+    if score >= 7 and points >= 1:
+        return "Positivo"
+
+    if score <= 4 and points <= -2:
+        return "Fraco"
+
+    if score <= 5:
+        return "Neutro"
+
+    return "Positivo"
+
+
+# ================================================================
+# ANÁLISE COMPLETA
+# ================================================================
+
+def analyze_asset(raw_ticker):
+
+    ticker = normalize_ticker(raw_ticker)
+
+    if not ticker:
+        return {
+            "ok": False,
+            "error": "Digite um ticker."
         }
-    })
+
+    try:
+
+        history = download_history(
+            ticker,
+            period="1y",
+            interval="1d"
+        )
+
+        if history.empty:
+
+            # Tenta novamente como EUA
+            ticker2 = str(raw_ticker).upper().strip()
+
+            history = download_history(
+                ticker2,
+                period="1y",
+                interval="1d"
+            )
+
+            if not history.empty:
+                ticker = ticker2
+
+        if history.empty:
+
+            return {
+                "ok": False,
+                "error": (
+                    f"Não foi possível encontrar {raw_ticker}. "
+                    "Verifique o código do ativo."
+                )
+            }
+
+        indicators = calculate_indicators(history)
+
+        fundamentals = get_fundamentals(ticker)
+
+        score = calculate_score(
+            indicators,
+            fundamentals
+        )
+
+        risk = calculate_risk(
+            indicators
+        )
+
+        signal = calculate_signal(
+            indicators,
+            score
+        )
+
+        # --------------------------------------------------------
+        # Dados para gráfico
+        # --------------------------------------------------------
+
+        chart = []
+
+        try:
+
+            recent = history.tail(180)
+
+            for index, row in recent.iterrows():
+
+                try:
+
+                    date = index.strftime("%Y-%m-%d")
+
+                    close = safe_float(
+                        row["Close"]
+                    )
+
+                    if close is not None:
+
+                        chart.append({
+                            "date": date,
+                            "close": round(close, 4)
+                        })
+
+                except Exception:
+                    continue
+
+        except Exception:
+            chart = []
+
+        result = {
+
+            "ok": True,
+
+            "ticker": display_ticker(ticker),
+
+            "yahoo_ticker": ticker,
+
+            "name": fundamentals.get(
+                "long_name"
+            ),
+
+            "currency": fundamentals.get(
+                "currency"
+            ),
+
+            "fundamentals": fundamentals,
+
+            "indicators": indicators,
+
+            "score": score,
+
+            "risk": risk,
+
+            "signal": signal,
+
+            "chart": chart,
+
+            "updated_at": datetime.now().strftime(
+                "%d/%m/%Y %H:%M:%S"
+            )
+        }
+
+        return result
+
+    except Exception as error:
+
+        traceback.print_exc()
+
+        return {
+            "ok": False,
+            "error": f"Erro ao analisar ativo: {str(error)}"
+        }
 
 
-@app.get("/api/price/<symbol>")
-def api_price(symbol):
-    result = fetch_yahoo_price(symbol)
-    status = 200 if result.get("ok") else 503
-    return jsonify(result), status
+# ================================================================
+# BANCO TEMPORÁRIO DA CARTEIRA
+# ================================================================
+# Em Render, este armazenamento é temporário.
+# Para uma carteira permanente por usuário, será necessário banco
+# de dados/login posteriormente.
+
+portfolio = []
 
 
-# ============================================================
-# PÁGINA
-# ============================================================
+# ================================================================
+# PÁGINA HTML
+# ================================================================
 
 HTML = r"""
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Invest Analyzer Pro</title>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>Invest Analyzer Pro 6.0</title>
+
 <style>
-*{box-sizing:border-box}
-body{
-    margin:0;
-    background:#080b10;
-    color:#f2f4f8;
-    font-family:Arial,Helvetica,sans-serif;
+
+* {
+    box-sizing: border-box;
 }
-.container{
-    width:min(100%,760px);
-    margin:auto;
-    padding:22px;
+
+body {
+    margin: 0;
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    background: #0b0d12;
+
+    color: #f4f4f5;
 }
-.hero,.card{
-    background:#10151c;
-    border:1px solid #26303d;
-    border-radius:26px;
-    padding:28px;
-    margin-bottom:22px;
+
+header {
+    padding: 22px 16px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #111827,
+            #0b0d12
+        );
+
+    border-bottom:
+        1px solid #252a36;
 }
-.hero{
-    background:#141b2b;
+
+.logo {
+    max-width: 1200px;
+
+    margin: auto;
 }
-h1{font-size:34px;margin:0 0 12px}
-h2{font-size:25px;margin:0 0 22px}
-.subtitle{
-    color:#aeb7c7;
-    font-size:20px;
-    line-height:1.35;
+
+.logo h1 {
+    margin: 0;
+
+    font-size: 28px;
 }
-.grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:22px;
+
+.logo p {
+    color: #9ca3af;
+
+    margin:
+        7px 0 0;
 }
-.stat{
-    background:#10151c;
-    border:1px solid #26303d;
-    border-radius:25px;
-    padding:28px;
+
+.container {
+
+    width: 100%;
+
+    max-width: 1200px;
+
+    margin: auto;
+
+    padding: 20px 14px 50px;
 }
-.label{color:#aeb7c7;font-size:19px;margin-bottom:15px}
-.value{font-size:31px;font-weight:700}
-.negative{color:#f06c87}
-.positive{color:#51d69b}
-input{
-    width:100%;
-    background:#090d12;
-    color:#f4f6f8;
-    border:1px solid #354154;
-    border-radius:17px;
-    padding:19px 20px;
-    font-size:20px;
-    margin-bottom:16px;
-    outline:none;
+
+.search-box {
+
+    background: #151923;
+
+    border:
+        1px solid #2b3240;
+
+    border-radius: 20px;
+
+    padding: 16px;
+
+    margin-bottom: 18px;
 }
-button{
-    width:100%;
-    border:0;
-    border-radius:17px;
-    padding:19px;
-    background:#2d67e8;
-    color:white;
-    font-size:20px;
-    font-weight:700;
-    cursor:pointer;
+
+.search-row {
+
+    display: flex;
+
+    gap: 10px;
 }
-button.secondary{
-    background:#242c38;
+
+input {
+
+    flex: 1;
+
+    min-width: 0;
+
+    background: #1b202b;
+
+    border:
+        1px solid #353d4c;
+
+    border-radius: 14px;
+
+    padding: 17px;
+
+    color: white;
+
+    font-size: 17px;
+
+    outline: none;
 }
-button.danger{
-    background:#6b2637;
+
+input:focus {
+    border-color: #3b82f6;
 }
-.asset{
-    border:1px solid #293442;
-    border-radius:18px;
-    padding:18px;
-    margin-top:14px;
-    background:#0c1117;
+
+button {
+
+    border: 0;
+
+    border-radius: 14px;
+
+    padding: 15px 20px;
+
+    background: #2f80ed;
+
+    color: white;
+
+    font-weight: bold;
+
+    font-size: 15px;
+
+    cursor: pointer;
 }
-.asset-top{
-    display:flex;
-    justify-content:space-between;
-    gap:15px;
+
+button:hover {
+    opacity: 0.9;
 }
-.asset-symbol{font-size:23px;font-weight:700}
-.small{color:#9fa9b8;font-size:15px;margin-top:5px}
-.message{
-    margin-top:15px;
-    color:#aeb7c7;
-    font-size:17px;
-    line-height:1.4;
+
+.btn-dark {
+    background: #202633;
 }
-.footer{
-    text-align:center;
-    color:#707b8c;
-    padding:10px 0 30px;
+
+.btn-green {
+    background: #159957;
 }
-@media(max-width:600px){
-    .container{padding:22px}
-    .grid{gap:16px}
-    .hero,.card,.stat{padding:24px}
-    h1{font-size:31px}
-    .subtitle{font-size:18px}
-    .value{font-size:27px}
+
+.btn-red {
+    background: #b83232;
 }
+
+.quick-grid {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, 1fr);
+
+    gap: 12px;
+
+    margin-bottom: 18px;
+}
+
+.card {
+
+    background: #171b24;
+
+    border:
+        1px solid #292f3b;
+
+    border-radius: 20px;
+
+    padding: 20px;
+
+    box-shadow:
+        0 10px 25px
+        rgba(0,0,0,.12);
+}
+
+.quick-card {
+
+    text-align: center;
+
+    cursor: pointer;
+
+    transition: .2s;
+}
+
+.quick-card:hover {
+    transform: translateY(-2px);
+}
+
+.quick-icon {
+    font-size: 28px;
+
+    margin-bottom: 8px;
+}
+
+.quick-title {
+    font-weight: bold;
+
+    font-size: 16px;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+.section {
+    margin-top: 18px;
+}
+
+.status {
+
+    display: none;
+
+    padding: 15px;
+
+    margin-bottom: 16px;
+
+    border-radius: 14px;
+
+    background: #202633;
+
+    color: #d1d5db;
+}
+
+.asset-header {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 15px;
+}
+
+.ticker {
+    font-size: 30px;
+
+    font-weight: 800;
+}
+
+.asset-name {
+    color: #9ca3af;
+
+    margin-top: 5px;
+}
+
+.price {
+
+    font-size: 30px;
+
+    font-weight: 800;
+
+    text-align: right;
+}
+
+.badge {
+
+    display: inline-block;
+
+    padding: 6px 10px;
+
+    border-radius: 999px;
+
+    font-size: 12px;
+
+    font-weight: bold;
+
+    margin-top: 8px;
+}
+
+.badge-green {
+    background: #123d2a;
+
+    color: #6ee7a8;
+}
+
+.badge-yellow {
+    background: #453a12;
+
+    color: #facc15;
+}
+
+.badge-red {
+    background: #481d23;
+
+    color: #f87171;
+}
+
+.stats {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, 1fr);
+
+    gap: 12px;
+
+    margin-top: 15px;
+}
+
+.stat {
+
+    background: #10141c;
+
+    padding: 15px;
+
+    border-radius: 15px;
+
+    border:
+        1px solid #252b36;
+}
+
+.stat-label {
+
+    color: #9ca3af;
+
+    font-size: 13px;
+
+    margin-bottom: 7px;
+}
+
+.stat-value {
+
+    font-size: 19px;
+
+    font-weight: bold;
+}
+
+.green {
+    color: #4ade80;
+}
+
+.red {
+    color: #f87171;
+}
+
+.yellow {
+    color: #facc15;
+}
+
+.blue {
+    color: #60a5fa;
+}
+
+.score {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    width: 100px;
+
+    height: 100px;
+
+    border-radius: 50%;
+
+    border: 7px solid #2f80ed;
+
+    font-size: 27px;
+
+    font-weight: bold;
+}
+
+.score-box {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 20px;
+}
+
+.grid {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, 1fr);
+
+    gap: 15px;
+}
+
+table {
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+    min-width: 700px;
+}
+
+.table-wrapper {
+
+    overflow-x: auto;
+
+    width: 100%;
+}
+
+th, td {
+
+    padding: 13px 10px;
+
+    border-bottom:
+        1px solid #292f3b;
+
+    text-align: left;
+}
+
+th {
+    color: #9ca3af;
+
+    font-size: 13px;
+}
+
+td {
+    font-size: 14px;
+}
+
+.chart {
+
+    width: 100%;
+
+    height: 330px;
+
+    background: #10141c;
+
+    border-radius: 15px;
+
+    padding: 10px;
+}
+
+canvas {
+
+    width: 100% !important;
+
+    height: 100% !important;
+}
+
+.portfolio-form {
+
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr 1fr auto;
+
+    gap: 10px;
+}
+
+.empty {
+
+    padding: 30px;
+
+    text-align: center;
+
+    color: #9ca3af;
+}
+
+.loading {
+
+    text-align: center;
+
+    padding: 25px;
+
+    color: #60a5fa;
+}
+
+.footer {
+
+    text-align: center;
+
+    color: #6b7280;
+
+    font-size: 12px;
+
+    padding: 30px 10px;
+}
+
+.disclaimer {
+
+    background: #221d10;
+
+    border:
+        1px solid #54451c;
+
+    color: #d6c98b;
+
+    padding: 15px;
+
+    border-radius: 15px;
+
+    font-size: 13px;
+
+    line-height: 1.5;
+
+    margin-top: 20px;
+}
+
+@media (max-width: 850px) {
+
+    .quick-grid {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+    .stats {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .portfolio-form {
+        grid-template-columns: 1fr;
+    }
+
+    .search-row {
+        flex-direction: column;
+    }
+
+    .asset-header {
+        flex-direction: column;
+
+        align-items: flex-start;
+    }
+
+    .price {
+        text-align: left;
+    }
+}
+
+@media (max-width: 500px) {
+
+    .container {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    header {
+        padding: 18px 12px;
+    }
+
+    .logo h1 {
+        font-size: 23px;
+    }
+
+    .quick-grid {
+        gap: 9px;
+    }
+
+    .card {
+        padding: 15px;
+        border-radius: 16px;
+    }
+
+    .ticker {
+        font-size: 25px;
+    }
+
+    .price {
+        font-size: 26px;
+    }
+
+    .stats {
+        gap: 8px;
+    }
+
+    .stat {
+        padding: 12px;
+    }
+
+    .stat-value {
+        font-size: 16px;
+    }
+
+}
+
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 </head>
+
 <body>
+
+<header>
+
+<div class="logo">
+
+<h1>📊 Invest Analyzer Pro</h1>
+
+<p>
+Análise de ações, FIIs e mercado internacional
+</p>
+
+</div>
+
+</header>
+
+
 <div class="container">
 
-<div class="hero">
-    <h1>📈 Invest Analyzer Pro</h1>
-    <div class="subtitle">
-        Carteira + preços de ações com dados do Yahoo Finance
-    </div>
+
+<div class="search-box">
+
+<div class="search-row">
+
+<input
+    id="ticker"
+    placeholder="Digite o ativo. Ex.: PETR4, VALE3, MXRF11, AAPL"
+    autocomplete="off"
+>
+
+<button onclick="analyze()">
+📊 Analisar ativo
+</button>
+
 </div>
 
-<div class="grid">
-    <div class="stat">
-        <div class="label">Patrimônio</div>
-        <div id="value">R$ 0,00</div>
-    </div>
-    <div class="stat">
-        <div class="label">Investido</div>
-        <div id="invested">R$ 0,00</div>
-    </div>
-    <div class="stat">
-        <div class="label">Lucro / Prejuízo</div>
-        <div id="profit">R$ 0,00</div>
-    </div>
-    <div class="stat">
-        <div class="label">Rentabilidade</div>
-        <div id="profitability">0,00%</div>
-    </div>
 </div>
+
+
+<div class="quick-grid">
+
+<div class="card quick-card"
+     onclick="analyzeTicker('PETR4')">
+
+<div class="quick-icon">📈</div>
+
+<div class="quick-title">
+Ações
+</div>
+
+</div>
+
+
+<div class="card quick-card"
+     onclick="analyzeTicker('MXRF11')">
+
+<div class="quick-icon">🏢</div>
+
+<div class="quick-title">
+FIIs
+</div>
+
+</div>
+
+
+<div class="card quick-card"
+     onclick="showOpportunities()">
+
+<div class="quick-icon">🔥</div>
+
+<div class="quick-title">
+Oportunidades
+</div>
+
+</div>
+
+
+<div class="card quick-card"
+     onclick="showRanking()">
+
+<div class="quick-icon">🏆</div>
+
+<div class="quick-title">
+Ranking
+</div>
+
+</div>
+
+
+<div class="card quick-card"
+     onclick="location.reload()">
+
+<div class="quick-icon">🔄</div>
+
+<div class="quick-title">
+Atualizar
+</div>
+
+</div>
+
+
+<div class="card quick-card"
+     onclick="exportExcel()">
+
+<div class="quick-icon">📊</div>
+
+<div class="quick-title">
+Exportar Excel
+</div>
+
+</div>
+
+</div>
+
+
+<div id="status" class="status"></div>
+
+
+<div id="result"></div>
+
+
+<div id="portfolio" class="section">
 
 <div class="card">
-    <h2>➕ Adicionar ativo</h2>
 
-    <input id="symbol" placeholder="Código — ex.: XPLG11, PETR4 ou AAPL">
-    <input id="quantity" type="number" min="0" step="any" placeholder="Quantidade">
-    <input id="average_price" type="number" min="0" step="any" placeholder="Preço médio">
+<h2>💼 Minha Carteira</h2>
 
-    <button onclick="addAsset()">Adicionar</button>
+<div class="portfolio-form">
 
-    <div id="message" class="message"></div>
+<input
+    id="pTicker"
+    placeholder="Ticker: PETR4"
+>
+
+<input
+    id="pQty"
+    type="number"
+    step="0.0001"
+    placeholder="Quantidade"
+>
+
+<input
+    id="pPrice"
+    type="number"
+    step="0.01"
+    placeholder="Preço médio"
+>
+
+<button
+    class="btn-green"
+    onclick="addPortfolio()">
+
+Adicionar
+
+</button>
+
 </div>
 
-<div class="card">
-    <h2>💼 Minha carteira</h2>
-    <div id="portfolio">Carregando...</div>
+<div id="portfolioResult"
+     style="margin-top:20px">
+
+<div class="empty">
+Sua carteira está vazia.
 </div>
 
-<div class="card">
-    <h2>🔎 Consultar ação</h2>
-    <input id="searchSymbol" placeholder="Ex.: AAPL, MSFT, XPLG11">
-    <button onclick="searchPrice()">Consultar preço</button>
-    <div id="searchResult" class="message"></div>
 </div>
+
+</div>
+
+</div>
+
+
+<div class="disclaimer">
+
+⚠️ <b>Aviso:</b>
+Os dados são obtidos de fontes públicas, principalmente
+Yahoo Finance. As informações podem apresentar atraso,
+indisponibilidade ou inconsistências. A nota, risco e sinais
+são indicadores automatizados e não constituem recomendação
+de compra ou venda.
+
+</div>
+
 
 <div class="footer">
-    Dados de mercado: Yahoo Finance · Cache automático para reduzir bloqueios
+
+Invest Analyzer Pro 6.0
+<br>
+Dados financeiros para fins informativos.
+
 </div>
 
 </div>
+
 
 <script>
-function brl(v){
-    return new Intl.NumberFormat('pt-BR',{
-        style:'currency',
-        currency:'BRL'
-    }).format(Number(v || 0));
+
+let currentChart = null;
+
+
+function showStatus(message) {
+
+    const box = document.getElementById("status");
+
+    box.style.display = "block";
+
+    box.innerHTML = message;
+
 }
 
-function pct(v){
-    return Number(v || 0).toFixed(2).replace('.',',') + '%';
+
+function hideStatus() {
+
+    document.getElementById("status").style.display = "none";
+
 }
 
-function setProfitClass(el, value){
-    el.className = Number(value) < 0 ? 'value negative' :
-                   Number(value) > 0 ? 'value positive' : 'value';
+
+function analyzeTicker(ticker) {
+
+    document.getElementById("ticker").value = ticker;
+
+    analyze();
+
 }
 
-async function loadPortfolio(){
-    try{
-        const response = await fetch('/api/portfolio');
+
+async function analyze() {
+
+    const input =
+        document.getElementById("ticker");
+
+    const ticker =
+        input.value.trim();
+
+    if (!ticker) {
+
+        showStatus(
+            "⚠️ Digite um ticker para analisar."
+        );
+
+        return;
+    }
+
+    showStatus(
+        "🔄 Consultando Yahoo Finance..."
+    );
+
+    document.getElementById("result").innerHTML =
+        '<div class="card loading">⏳ Analisando ativo...</div>';
+
+    try {
+
+        const response = await fetch(
+            "/api/analyze?ticker=" +
+            encodeURIComponent(ticker)
+        );
+
         const data = await response.json();
 
-        if(!data.ok){
-            throw new Error(data.error || 'Erro ao carregar carteira.');
-        }
+        if (!data.ok) {
 
-        const s = data.summary || {};
+            document.getElementById("result").innerHTML =
+                '<div class="card">' +
+                '❌ ' + escapeHtml(data.error) +
+                '</div>';
 
-        document.getElementById('value').textContent = brl(s.value);
-        document.getElementById('invested').textContent = brl(s.invested);
-
-        const profit = document.getElementById('profit');
-        profit.textContent = brl(s.profit);
-        setProfitClass(profit, s.profit);
-
-        const profitability = document.getElementById('profitability');
-        profitability.textContent = pct(s.profitability);
-        setProfitClass(profitability, s.profitability);
-
-        const box = document.getElementById('portfolio');
-
-        if(!data.items || data.items.length === 0){
-            box.innerHTML = '<div class="message">Nenhum ativo cadastrado ainda.</div>';
             return;
         }
 
-        box.innerHTML = data.items.map(item => {
-            const price = item.current_price == null
-                ? 'Indisponível'
-                : brl(item.current_price);
+        hideStatus();
 
-            const profitClass = Number(item.profit) < 0
-                ? 'negative'
-                : Number(item.profit) > 0
-                    ? 'positive'
-                    : '';
+        renderAnalysis(data);
 
-            return `
-                <div class="asset">
-                    <div class="asset-top">
-                        <div>
-                            <div class="asset-symbol">${escapeHtml(item.symbol)}</div>
-                            <div class="small">
-                                ${item.quantity} cotas · PM ${brl(item.average_price)}
-                            </div>
-                        </div>
-                        <div style="text-align:right">
-                            <div>${price}</div>
-                            <div class="${profitClass}">
-                                ${brl(item.profit)}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="small">
-                        Fonte: ${escapeHtml(item.price_source || 'Yahoo Finance')}
-                    </div>
-                    ${item.warning ? `<div class="message">${escapeHtml(item.warning)}</div>` : ''}
-                    ${item.error ? `<div class="message">${escapeHtml(item.error)}</div>` : ''}
-                    <button class="danger" style="margin-top:14px"
-                        onclick="removeAsset('${encodeURIComponent(item.yahoo_symbol)}')">
-                        Remover
-                    </button>
+    } catch (error) {
+
+        document.getElementById("result").innerHTML =
+            '<div class="card">' +
+            '❌ Erro de comunicação com o servidor.' +
+            '</div>';
+
+    }
+
+}
+
+
+function escapeHtml(text) {
+
+    if (text === null ||
+        text === undefined) {
+
+        return "";
+
+    }
+
+    return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+
+function formatMoney(value, currency) {
+
+    if (value === null ||
+        value === undefined) {
+
+        return "N/D";
+    }
+
+    const symbol =
+        currency === "USD"
+        ? "$"
+        : "R$";
+
+    return symbol + " " +
+        Number(value).toLocaleString(
+            "pt-BR",
+            {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }
+        );
+}
+
+
+function formatPercent(value) {
+
+    if (value === null ||
+        value === undefined) {
+
+        return "N/D";
+    }
+
+    const n = Number(value);
+
+    return (
+        n >= 0 ? "+" : ""
+    ) +
+    n.toFixed(2) +
+    "%";
+}
+
+
+function colorClass(value) {
+
+    if (value === null ||
+        value === undefined) {
+
+        return "";
+    }
+
+    return Number(value) >= 0
+        ? "green"
+        : "red";
+}
+
+
+function renderAnalysis(data) {
+
+    const i = data.indicators;
+
+    const f = data.fundamentals;
+
+    const currency = data.currency;
+
+    const score = Number(data.score || 0);
+
+    let scoreClass = "badge-yellow";
+
+    if (score >= 7) {
+        scoreClass = "badge-green";
+    }
+
+    if (score <= 4) {
+        scoreClass = "badge-red";
+    }
+
+    let riskClass =
+        data.risk === "Baixo"
+        ? "badge-green"
+        : "badge-yellow";
+
+    if (
+        data.risk === "Alto" ||
+        data.risk === "Muito alto"
+    ) {
+        riskClass = "badge-red";
+    }
+
+    document.getElementById("result").innerHTML = `
+
+    <div class="card section">
+
+        <div class="asset-header">
+
+            <div>
+
+                <div class="ticker">
+                    ${escapeHtml(data.ticker)}
                 </div>
+
+                <div class="asset-name">
+                    ${escapeHtml(data.name)}
+                </div>
+
+                <span class="badge ${scoreClass}">
+                    ⭐ Nota ${score}/10
+                </span>
+
+                <span class="badge ${riskClass}">
+                    ⚠️ ${escapeHtml(data.risk)}
+                </span>
+
+                <span class="badge badge-green">
+                    📌 ${escapeHtml(data.signal)}
+                </span>
+
+            </div>
+
+
+            <div>
+
+                <div class="price">
+
+                    ${formatMoney(
+                        i.current,
+                        currency
+                    )}
+
+                </div>
+
+                <div class="${colorClass(i.daily_change)}">
+
+                    ${formatPercent(
+                        i.daily_change
+                    )}
+
+                    hoje
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="stats">
+
+            ${stat(
+                "1 semana",
+                formatPercent(i.weekly_change),
+                colorClass(i.weekly_change)
+            )}
+
+            ${stat(
+                "1 mês",
+                formatPercent(i.monthly_change),
+                colorClass(i.monthly_change)
+            )}
+
+            ${stat(
+                "1 ano",
+                formatPercent(i.yearly_change),
+                colorClass(i.yearly_change)
+            )}
+
+            ${stat(
+                "Volatilidade",
+                i.volatility !== null
+                    ? Number(i.volatility).toFixed(2) + "%"
+                    : "N/D"
+            )}
+
+        </div>
+
+    </div>
+
+
+    <div class="grid section">
+
+
+        <div class="card">
+
+            <h2>📈 Tendência</h2>
+
+            <div class="stats">
+
+                ${stat(
+                    "Média 20",
+                    formatMoney(
+                        i.sma20,
+                        currency
+                    )
+                )}
+
+                ${stat(
+                    "Média 50",
+                    formatMoney(
+                        i.sma50,
+                        currency
+                    )
+                )}
+
+                ${stat(
+                    "Média 200",
+                    formatMoney(
+                        i.sma200,
+                        currency
+                    )
+                )}
+
+                ${stat(
+                    "RSI",
+                    i.rsi !== null
+                        ? Number(i.rsi).toFixed(2)
+                        : "N/D"
+                )}
+
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <h2>📊 MACD</h2>
+
+            <div class="stats">
+
+                ${stat(
+                    "MACD",
+                    i.macd !== null
+                        ? Number(i.macd).toFixed(4)
+                        : "N/D"
+                )}
+
+                ${stat(
+                    "Sinal",
+                    i.macd_signal !== null
+                        ? Number(i.macd_signal).toFixed(4)
+                        : "N/D"
+                )}
+
+                ${stat(
+                    "Histograma",
+                    i.macd_histogram !== null
+                        ? Number(i.macd_histogram).toFixed(4)
+                        : "N/D"
+                )}
+
+                ${stat(
+                    "Distância máxima",
+                    formatPercent(i.distance_high)
+                )}
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+
+    <div class="card section">
+
+        <h2>📉 Gráfico — últimos meses</h2>
+
+        <div class="chart">
+
+            <canvas id="priceChart"></canvas>
+
+        </div>
+
+    </div>
+
+
+    <div class="card section">
+
+        <h2>💰 Fundamentos</h2>
+
+        <div class="table-wrapper">
+
+        <table>
+
+            <thead>
+
+                <tr>
+
+                    <th>Indicador</th>
+                    <th>Valor</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+                <tr>
+                    <td>Setor</td>
+                    <td>${escapeHtml(f.sector)}</td>
+                </tr>
+
+                <tr>
+                    <td>Indústria</td>
+                    <td>${escapeHtml(f.industry)}</td>
+                </tr>
+
+                <tr>
+                    <td>Capitalização</td>
+                    <td>${formatLargeNumber(f.market_cap)}</td>
+                </tr>
+
+                <tr>
+                    <td>P/L</td>
+                    <td>${formatValue(f.pe)}</td>
+                </tr>
+
+                <tr>
+                    <td>P/VP</td>
+                    <td>${formatValue(f.pb)}</td>
+                </tr>
+
+                <tr>
+                    <td>EPS/LPA</td>
+                    <td>${formatValue(f.eps)}</td>
+                </tr>
+
+                <tr>
+                    <td>Dividend Yield</td>
+                    <td>${formatPercent(f.dividend_yield)}</td>
+                </tr>
+
+                <tr>
+                    <td>ROE</td>
+                    <td>${formatPercent(f.roe)}</td>
+                </tr>
+
+                <tr>
+                    <td>Margem de lucro</td>
+                    <td>${formatPercent(f.profit_margin)}</td>
+                </tr>
+
+                <tr>
+                    <td>Crescimento receita</td>
+                    <td>${formatPercent(f.revenue_growth)}</td>
+                </tr>
+
+                <tr>
+                    <td>Crescimento lucro</td>
+                    <td>${formatPercent(f.earnings_growth)}</td>
+                </tr>
+
+                <tr>
+                    <td>Dívida/Patrimônio</td>
+                    <td>${formatValue(f.debt_to_equity)}</td>
+                </tr>
+
+            </tbody>
+
+        </table>
+
+        </div>
+
+    </div>
+
+
+    <div class="card section">
+
+        <h2>🎯 Faixa de preço</h2>
+
+        <div class="stats">
+
+            ${stat(
+                "Mínima 1 ano",
+                formatMoney(
+                    i.low52,
+                    currency
+                )
+            )}
+
+            ${stat(
+                "Máxima 1 ano",
+                formatMoney(
+                    i.high52,
+                    currency
+                )
+            )}
+
+            ${stat(
+                "Distância da máxima",
+                formatPercent(i.distance_high)
+            )}
+
+            ${stat(
+                "Distância da mínima",
+                formatPercent(i.distance_low)
+            )}
+
+        </div>
+
+    </div>
+
+    `;
+
+
+    renderChart(data.chart);
+
+}
+
+
+function stat(label, value, cls="") {
+
+    return `
+
+        <div class="stat">
+
+            <div class="stat-label">
+                ${escapeHtml(label)}
+            </div>
+
+            <div class="stat-value ${cls}">
+                ${escapeHtml(value)}
+            </div>
+
+        </div>
+
+    `;
+
+}
+
+
+function formatValue(value) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "N/D";
+    }
+
+    const n = Number(value);
+
+    if (!Number.isFinite(n)) {
+        return "N/D";
+    }
+
+    return n.toFixed(2);
+
+}
+
+
+function formatLargeNumber(value) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "N/D";
+    }
+
+    const n = Number(value);
+
+    if (!Number.isFinite(n)) {
+        return "N/D";
+    }
+
+    if (n >= 1e12) {
+        return (
+            (n / 1e12).toFixed(2)
+            + " tri"
+        );
+    }
+
+    if (n >= 1e9) {
+        return (
+            (n / 1e9).toFixed(2)
+            + " bi"
+        );
+    }
+
+    if (n >= 1e6) {
+        return (
+            (n / 1e6).toFixed(2)
+            + " mi"
+        );
+    }
+
+    return n.toLocaleString(
+        "pt-BR"
+    );
+
+}
+
+
+function renderChart(points) {
+
+    const canvas =
+        document.getElementById(
+            "priceChart"
+        );
+
+    if (!canvas) {
+        return;
+    }
+
+    if (currentChart) {
+        currentChart.destroy();
+    }
+
+    const labels =
+        points.map(
+            x => x.date
+        );
+
+    const values =
+        points.map(
+            x => x.close
+        );
+
+    currentChart =
+        new Chart(
+            canvas.getContext("2d"),
+            {
+
+                type: "line",
+
+                data: {
+
+                    labels: labels,
+
+                    datasets: [{
+
+                        label: "Preço",
+
+                        data: values,
+
+                        tension: 0.25,
+
+                        pointRadius: 0,
+
+                        borderWidth: 2,
+
+                        fill: false
+
+                    }]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    plugins: {
+
+                        legend: {
+                            display: false
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 8
+                            }
+                        },
+
+                        y: {
+
+                            ticks: {
+
+                                callback:
+                                    function(value) {
+
+                                        return Number(
+                                            value
+                                        ).toLocaleString(
+                                            "pt-BR",
+                                            {
+                                                maximumFractionDigits: 2
+                                            }
+                                        );
+
+                                    }
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+}
+
+
+async function addPortfolio() {
+
+    const ticker =
+        document
+        .getElementById("pTicker")
+        .value
+        .trim();
+
+    const quantity =
+        document
+        .getElementById("pQty")
+        .value;
+
+    const price =
+        document
+        .getElementById("pPrice")
+        .value;
+
+    if (
+        !ticker ||
+        !quantity ||
+        !price
+    ) {
+
+        alert(
+            "Preencha ticker, quantidade e preço médio."
+        );
+
+        return;
+    }
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/portfolio",
+                {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        ticker: ticker,
+
+                        quantity:
+                            Number(quantity),
+
+                        price:
+                            Number(price)
+
+                    })
+
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!data.ok) {
+
+            alert(data.error);
+
+            return;
+        }
+
+        document
+            .getElementById("pTicker")
+            .value = "";
+
+        document
+            .getElementById("pQty")
+            .value = "";
+
+        document
+            .getElementById("pPrice")
+            .value = "";
+
+        renderPortfolio(
+            data.portfolio
+        );
+
+    } catch (error) {
+
+        alert(
+            "Erro ao adicionar ativo."
+        );
+
+    }
+
+}
+
+
+async function loadPortfolio() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/portfolio"
+            );
+
+        const data =
+            await response.json();
+
+        renderPortfolio(
+            data.portfolio
+        );
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+
+}
+
+
+function renderPortfolio(items) {
+
+    const container =
+        document.getElementById(
+            "portfolioResult"
+        );
+
+    if (!items || items.length === 0) {
+
+        container.innerHTML =
+            '<div class="empty">' +
+            'Sua carteira está vazia.' +
+            '</div>';
+
+        return;
+    }
+
+    let totalInvested = 0;
+
+    let totalCurrent = 0;
+
+    let rows = "";
+
+    for (
+        const item of items
+    ) {
+
+        const invested =
+            item.quantity *
+            item.average_price;
+
+        const current =
+            item.current_price !== null
+            ? item.quantity *
+              item.current_price
+            : null;
+
+        totalInvested +=
+            invested;
+
+        if (current !== null) {
+            totalCurrent += current;
+        }
+
+        const profit =
+            current !== null
+            ? current - invested
+            : null;
+
+        rows += `
+
+        <tr>
+
+            <td>
+                <b>${escapeHtml(item.ticker)}</b>
+            </td>
+
+            <td>
+                ${Number(
+                    item.quantity
+                ).toLocaleString(
+                    "pt-BR"
+                )}
+            </td>
+
+            <td>
+                ${formatMoney(
+                    item.average_price,
+                    item.currency
+                )}
+            </td>
+
+            <td>
+                ${formatMoney(
+                    item.current_price,
+                    item.currency
+                )}
+            </td>
+
+            <td class="${
+                profit !== null
+                ? (
+                    profit >= 0
+                    ? "green"
+                    : "red"
+                )
+                : ""
+            }">
+
+                ${
+                    profit !== null
+                    ? formatMoney(
+                        profit,
+                        item.currency
+                    )
+                    : "N/D"
+                }
+
+            </td>
+
+            <td>
+
+                <button
+                    class="btn-red"
+                    onclick="removePortfolio(
+                        '${encodeURIComponent(item.ticker)}'
+                    )">
+
+                    Excluir
+
+                </button>
+
+            </td>
+
+        </tr>
+
+        `;
+
+    }
+
+
+    const profit =
+        totalCurrent - totalInvested;
+
+
+    container.innerHTML = `
+
+        <div class="stats">
+
+            ${stat(
+                "Investido",
+                formatMoney(
+                    totalInvested,
+                    "BRL"
+                )
+            )}
+
+            ${stat(
+                "Patrimônio",
+                formatMoney(
+                    totalCurrent,
+                    "BRL"
+                )
+            )}
+
+            ${stat(
+                "Lucro/Prejuízo",
+                formatMoney(
+                    profit,
+                    "BRL"
+                ),
+                profit >= 0
+                ? "green"
+                : "red"
+            )}
+
+        </div>
+
+
+        <div
+            class="table-wrapper"
+            style="margin-top:20px"
+        >
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>Ativo</th>
+                        <th>Qtd.</th>
+                        <th>Preço médio</th>
+                        <th>Preço atual</th>
+                        <th>Resultado</th>
+                        <th>Ação</th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+                    ${rows}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    `;
+
+}
+
+
+async function removePortfolio(ticker) {
+
+    if (
+        !confirm(
+            "Deseja excluir este ativo da carteira?"
+        )
+    ) {
+        return;
+    }
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/portfolio/" +
+                ticker,
+                {
+                    method: "DELETE"
+                }
+            );
+
+        const data =
+            await response.json();
+
+        renderPortfolio(
+            data.portfolio
+        );
+
+    } catch (error) {
+
+        alert(
+            "Erro ao excluir ativo."
+        );
+
+    }
+
+}
+
+
+async function showRanking() {
+
+    showStatus(
+        "🏆 Calculando ranking..."
+    );
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/ranking"
+            );
+
+        const data =
+            await response.json();
+
+        if (!data.ok) {
+
+            showStatus(
+                "❌ " + data.error
+            );
+
+            return;
+        }
+
+        hideStatus();
+
+        let rows = "";
+
+        for (
+            let i = 0;
+            i < data.items.length;
+            i++
+        ) {
+
+            const item =
+                data.items[i];
+
+            rows += `
+
+                <tr>
+
+                    <td>
+                        <b>${i + 1}º</b>
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            item.ticker
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            item.name
+                        )}
+                    </td>
+
+                    <td>
+                        ${Number(
+                            item.score
+                        ).toFixed(1)}/10
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            item.risk
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            item.signal
+                        )}
+                    </td>
+
+                </tr>
+
             `;
-        }).join('');
 
-    }catch(error){
-        document.getElementById('portfolio').innerHTML =
-            '<div class="message">Erro: ' + escapeHtml(error.message) + '</div>';
-    }
-}
-
-function escapeHtml(text){
-    return String(text ?? '')
-        .replaceAll('&','&amp;')
-        .replaceAll('<','&lt;')
-        .replaceAll('>','&gt;')
-        .replaceAll('"','&quot;')
-        .replaceAll("'","&#039;");
-}
-
-async function addAsset(){
-    const symbol = document.getElementById('symbol').value.trim();
-    const quantity = document.getElementById('quantity').value;
-    const average_price = document.getElementById('average_price').value;
-    const message = document.getElementById('message');
-
-    if(!symbol || !quantity || !average_price){
-        message.textContent = 'Preencha código, quantidade e preço médio.';
-        return;
-    }
-
-    message.textContent = 'Adicionando ativo...';
-
-    try{
-        const response = await fetch('/api/portfolio/add',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                symbol,
-                quantity,
-                average_price
-            })
-        });
-
-        const data = await response.json();
-
-        if(!data.ok){
-            throw new Error(data.error || 'Não foi possível adicionar.');
         }
 
-        message.textContent = data.message;
+        document.getElementById(
+            "result"
+        ).innerHTML = `
 
-        document.getElementById('symbol').value = '';
-        document.getElementById('quantity').value = '';
-        document.getElementById('average_price').value = '';
+            <div class="card section">
 
-        renderFromData(data);
+                <h2>
+                    🏆 Ranking
+                </h2>
 
-    }catch(error){
-        message.textContent = error.message;
+                <div class="table-wrapper">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+
+                                <th>#</th>
+                                <th>Ativo</th>
+                                <th>Nome</th>
+                                <th>Nota</th>
+                                <th>Risco</th>
+                                <th>Sinal</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                            ${rows}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        `;
+
+    } catch (error) {
+
+        showStatus(
+            "❌ Erro ao gerar ranking."
+        );
+
     }
+
 }
 
-async function removeAsset(symbol){
-    try{
-        const response = await fetch('/api/portfolio/remove',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                symbol:decodeURIComponent(symbol)
-            })
-        });
 
-        const data = await response.json();
+async function showOpportunities() {
 
-        if(!data.ok){
-            throw new Error(data.error || 'Erro ao remover.');
+    showStatus(
+        "🔥 Procurando oportunidades..."
+    );
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/opportunities"
+            );
+
+        const data =
+            await response.json();
+
+        if (!data.ok) {
+
+            showStatus(
+                "❌ " + data.error
+            );
+
+            return;
         }
 
-        renderFromData(data);
-    }catch(error){
-        document.getElementById('message').textContent = error.message;
-    }
-}
+        hideStatus();
 
-function renderFromData(data){
-    const s = data.summary || {};
+        let rows = "";
 
-    document.getElementById('value').textContent = brl(s.value);
-    document.getElementById('invested').textContent = brl(s.invested);
+        for (
+            const item of data.items
+        ) {
 
-    const profit = document.getElementById('profit');
-    profit.textContent = brl(s.profit);
-    setProfitClass(profit, s.profit);
+            rows += `
 
-    const profitability = document.getElementById('profitability');
-    profitability.textContent = pct(s.profitability);
-    setProfitClass(profitability, s.profitability);
+            <tr>
 
-    loadPortfolio();
-}
+                <td>
+                    <b>${escapeHtml(
+                        item.ticker
+                    )}</b>
+                </td>
 
-async function searchPrice(){
-    const symbol = document.getElementById('searchSymbol').value.trim();
-    const result = document.getElementById('searchResult');
+                <td>
+                    ${escapeHtml(
+                        item.name
+                    )}
+                </td>
 
-    if(!symbol){
-        result.textContent = 'Informe um código de ação.';
-        return;
-    }
+                <td>
+                    ${Number(
+                        item.score
+                    ).toFixed(1)}/10
+                </td>
 
-    result.textContent = 'Consultando Yahoo Finance...';
+                <td class="${
+                    item.yearly_change >= 0
+                    ? "green"
+                    : "red"
+                }">
 
-    try{
-        const response = await fetch('/api/price/' + encodeURIComponent(symbol));
-        const data = await response.json();
+                    ${formatPercent(
+                        item.yearly_change
+                    )}
 
-        if(!data.ok){
-            throw new Error(data.error || 'Preço indisponível.');
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.risk
+                    )}
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        item.signal
+                    )}
+                </td>
+
+            </tr>
+
+            `;
+
         }
 
-        result.innerHTML =
-            '<strong>' + escapeHtml(data.symbol) + '</strong><br>' +
-            'Preço: <strong>' + brl(data.price) + '</strong><br>' +
-            'Fonte: ' + escapeHtml(data.source || 'Yahoo Finance');
+        document.getElementById(
+            "result"
+        ).innerHTML = `
 
-        if(data.warning){
-            result.innerHTML += '<br>' + escapeHtml(data.warning);
-        }
+            <div class="card section">
 
-    }catch(error){
-        result.textContent = error.message;
+                <h2>
+                    🔥 Oportunidades
+                </h2>
+
+                <div class="table-wrapper">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+
+                                <th>Ativo</th>
+                                <th>Nome</th>
+                                <th>Nota</th>
+                                <th>1 ano</th>
+                                <th>Risco</th>
+                                <th>Sinal</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                            ${rows}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        `;
+
+    } catch (error) {
+
+        showStatus(
+            "❌ Erro ao buscar oportunidades."
+        );
+
     }
+
 }
+
+
+function exportExcel() {
+
+    window.location.href =
+        "/export/excel";
+
+}
+
+
+document
+    .getElementById("ticker")
+    .addEventListener(
+        "keydown",
+        function(event) {
+
+            if (
+                event.key === "Enter"
+            ) {
+
+                analyze();
+
+            }
+
+        }
+    );
+
 
 loadPortfolio();
+
 </script>
+
 </body>
+
 </html>
 """
 
 
-@app.get("/")
-def home():
-    return render_template_string(HTML)
+# ================================================================
+# ROTA PRINCIPAL
+# ================================================================
+
+@app.route("/")
+def index():
+
+    return render_template_string(
+        HTML
+    )
 
 
-# ============================================================
-# START
-# ============================================================
+# ================================================================
+# API DE ANÁLISE
+# ================================================================
+
+@app.route("/api/analyze")
+def api_analyze():
+
+    ticker = request.args.get(
+        "ticker",
+        ""
+    )
+
+    return jsonify(
+        analyze_asset(ticker)
+    )
+
+
+# ================================================================
+# API CARTEIRA - GET
+# ================================================================
+
+@app.route("/api/portfolio", methods=["GET"])
+def get_portfolio():
+
+    enriched = []
+
+    for item in portfolio:
+
+        try:
+
+            analysis =
+                analyze_asset(
+                    item["ticker"]
+                )
+
+            if analysis.get("ok"):
+
+                current =
+                    analysis[
+                        "indicators"
+                    ].get("current")
+
+                currency =
+                    analysis.get(
+                        "currency",
+                        "BRL"
+                    )
+
+            else:
+
+                current = None
+
+                currency = "BRL"
+
+            enriched.append({
+
+                "ticker":
+                    display_ticker(
+                        item["ticker"]
+                    ),
+
+                "quantity":
+                    item["quantity"],
+
+                "average_price":
+                    item["average_price"],
+
+                "current_price":
+                    current,
+
+                "currency":
+                    currency
+
+            })
+
+        except Exception:
+
+            enriched.append({
+
+                "ticker":
+                    display_ticker(
+                        item["ticker"]
+                    ),
+
+                "quantity":
+                    item["quantity"],
+
+                "average_price":
+                    item["average_price"],
+
+                "current_price":
+                    None,
+
+                "currency":
+                    "BRL"
+
+            })
+
+    return jsonify({
+        "ok": True,
+        "portfolio": enriched
+    })
+
+
+# ================================================================
+# API CARTEIRA - POST
+# ================================================================
+
+@app.route(
+    "/api/portfolio",
+    methods=["POST"]
+)
+def add_portfolio():
+
+    try:
+
+        data = request.get_json(
+            silent=True
+        ) or {}
+
+        ticker =
+            normalize_ticker(
+                data.get("ticker")
+            )
+
+        quantity =
+            safe_float(
+                data.get("quantity")
+            )
+
+        price =
+            safe_float(
+                data.get("price")
+            )
+
+        if not ticker:
+
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Informe o ticker."
+            }), 400
+
+        if quantity is None or quantity <= 0:
+
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Quantidade inválida."
+            }), 400
+
+        if price is None or price <= 0:
+
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Preço médio inválido."
+            }), 400
+
+        # Se já existe, soma posição
+        existing = None
+
+        for item in portfolio:
+
+            if item["ticker"] == ticker:
+
+                existing = item
+                break
+
+        if existing:
+
+            old_qty =
+                existing["quantity"]
+
+            old_price =
+                existing["average_price"]
+
+            total_qty =
+                old_qty + quantity
+
+            weighted =
+                (
+                    old_qty * old_price
+                    +
+                    quantity * price
+                ) / total_qty
+
+            existing[
+                "quantity"
+            ] = total_qty
+
+            existing[
+                "average_price"
+            ] = weighted
+
+        else:
+
+            portfolio.append({
+
+                "ticker":
+                    ticker,
+
+                "quantity":
+                    quantity,
+
+                "average_price":
+                    price
+
+            })
+
+
+        # retorna carteira
+        response =
+            get_portfolio()
+
+        return response
+
+    except Exception as error:
+
+        return jsonify({
+
+            "ok": False,
+
+            "error":
+                f"Erro ao adicionar: {str(error)}"
+
+        }), 500
+
+
+# ================================================================
+# API CARTEIRA - DELETE
+# ================================================================
+
+@app.route(
+    "/api/portfolio/<ticker>",
+    methods=["DELETE"]
+)
+def delete_portfolio(ticker):
+
+    ticker = normalize_ticker(
+        ticker
+    )
+
+    global portfolio
+
+    portfolio = [
+        item
+        for item in portfolio
+        if item["ticker"] != ticker
+    ]
+
+    return get_portfolio()
+
+
+# ================================================================
+# ATIVOS DO RANKING
+# ================================================================
+
+DEFAULT_ASSETS = [
+
+    # Ações Brasil
+    "PETR4",
+    "VALE3",
+    "ITUB4",
+    "BBAS3",
+    "WEGE3",
+
+    # FIIs
+    "MXRF11",
+    "HGLG11",
+    "KNRI11",
+    "XPLG11",
+    "BTLG11",
+
+    # EUA
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "NVDA"
+
+]
+
+
+# ================================================================
+# RANKING
+# ================================================================
+
+@app.route("/api/ranking")
+def ranking():
+
+    results = []
+
+    for ticker in DEFAULT_ASSETS:
+
+        try:
+
+            analysis =
+                analyze_asset(
+                    ticker
+                )
+
+            if not analysis.get("ok"):
+                continue
+
+            results.append({
+
+                "ticker":
+                    analysis["ticker"],
+
+                "name":
+                    analysis["name"],
+
+                "score":
+                    analysis["score"],
+
+                "risk":
+                    analysis["risk"],
+
+                "signal":
+                    analysis["signal"]
+
+            })
+
+        except Exception:
+
+            continue
+
+    results.sort(
+        key=lambda x:
+            x["score"],
+        reverse=True
+    )
+
+    return jsonify({
+
+        "ok": True,
+
+        "items":
+            results
+
+    })
+
+
+# ================================================================
+# OPORTUNIDADES
+# ================================================================
+
+@app.route("/api/opportunities")
+def opportunities():
+
+    results = []
+
+    for ticker in DEFAULT_ASSETS:
+
+        try:
+
+            analysis =
+                analyze_asset(
+                    ticker
+                )
+
+            if not analysis.get("ok"):
+                continue
+
+            indicators =
+                analysis[
+                    "indicators"
+                ]
+
+            score =
+                analysis[
+                    "score"
+                ]
+
+            yearly =
+                indicators.get(
+                    "yearly_change"
+                )
+
+            # Critério simples:
+            # nota >= 7
+            # e risco não muito alto
+
+            if (
+                score >= 7
+                and analysis["risk"]
+                not in [
+                    "Muito alto"
+                ]
+            ):
+
+                results.append({
+
+                    "ticker":
+                        analysis[
+                            "ticker"
+                        ],
+
+                    "name":
+                        analysis[
+                            "name"
+                        ],
+
+                    "score":
+                        score,
+
+                    "yearly_change":
+                        yearly,
+
+                    "risk":
+                        analysis[
+                            "risk"
+                        ],
+
+                    "signal":
+                        analysis[
+                            "signal"
+                        ]
+
+                })
+
+        except Exception:
+
+            continue
+
+
+    results.sort(
+        key=lambda x:
+            x["score"],
+        reverse=True
+    )
+
+    return jsonify({
+
+        "ok": True,
+
+        "items":
+            results
+
+    })
+
+
+# ================================================================
+# EXPORTAÇÃO EXCEL
+# ================================================================
+
+@app.route("/export/excel")
+def export_excel():
+
+    try:
+
+        rows = []
+
+        # --------------------------------------------------------
+        # Carteira
+        # --------------------------------------------------------
+
+        for item in portfolio:
+
+            analysis =
+                analyze_asset(
+                    item["ticker"]
+                )
+
+            indicators = (
+                analysis.get(
+                    "indicators",
+                    {}
+                )
+                if analysis.get("ok")
+                else {}
+            )
+
+            fundamentals = (
+                analysis.get(
+                    "fundamentals",
+                    {}
+                )
+                if analysis.get("ok")
+                else {}
+            )
+
+            current =
+                safe_float(
+                    indicators.get(
+                        "current"
+                    )
+                )
+
+            quantity =
+                item["quantity"]
+
+            average =
+                item["average_price"]
+
+            invested =
+                quantity * average
+
+            current_value = (
+                quantity * current
+                if current is not None
+                else None
+            )
+
+            profit = (
+                current_value - invested
+                if current_value is not None
+                else None
+            )
+
+            rows.append({
+
+                "Ativo":
+                    display_ticker(
+                        item["ticker"]
+                    ),
+
+                "Quantidade":
+                    quantity,
+
+                "Preço Médio":
+                    average,
+
+                "Preço Atual":
+                    current,
+
+                "Investido":
+                    invested,
+
+                "Patrimônio":
+                    current_value,
+
+                "Lucro/Prejuízo":
+                    profit,
+
+                "Rentabilidade %":
+                    (
+                        profit /
+                        invested *
+                        100
+                    )
+                    if profit is not None
+                    and invested
+                    else None,
+
+                "Nota":
+                    analysis.get(
+                        "score"
+                    ),
+
+                "Risco":
+                    analysis.get(
+                        "risk"
+                    ),
+
+                "Sinal":
+                    analysis.get(
+                        "signal"
+                    ),
+
+                "P/L":
+                    fundamentals.get(
+                        "pe"
+                    ),
+
+                "P/VP":
+                    fundamentals.get(
+                        "pb"
+                    ),
+
+                "Dividend Yield %":
+                    fundamentals.get(
+                        "dividend_yield"
+                    ),
+
+                "ROE %":
+                    fundamentals.get(
+                        "roe"
+                    )
+
+            })
+
+
+        # --------------------------------------------------------
+        # Se carteira vazia
+        # --------------------------------------------------------
+
+        if not rows:
+
+            rows.append({
+
+                "Aviso":
+                    "Carteira vazia"
+
+            })
+
+
+        df =
+            pd.DataFrame(
+                rows
+            )
+
+
+        output =
+            io.BytesIO()
+
+
+        with pd.ExcelWriter(
+            output,
+            engine="openpyxl"
+        ) as writer:
+
+            df.to_excel(
+                writer,
+                index=False,
+                sheet_name="Carteira"
+            )
+
+
+        output.seek(0)
+
+
+        return send_file(
+
+            output,
+
+            as_attachment=True,
+
+            download_name=
+                "invest_analyzer.xlsx",
+
+            mimetype=
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+        )
+
+    except Exception as error:
+
+        return jsonify({
+
+            "ok": False,
+
+            "error":
+                f"Erro ao exportar Excel: {str(error)}"
+
+        }), 500
+
+
+# ================================================================
+# HEALTH CHECK
+# ================================================================
+
+@app.route("/health")
+def health():
+
+    return jsonify({
+
+        "status": "ok",
+
+        "app":
+            "Invest Analyzer Pro",
+
+        "version":
+            "6.0",
+
+        "time":
+            datetime.now().isoformat()
+
+    })
+
+
+# ================================================================
+# ERROR HANDLERS
+# ================================================================
+
+@app.errorhandler(404)
+def not_found(error):
+
+    return jsonify({
+
+        "ok": False,
+
+        "error":
+            "Página não encontrada."
+
+    }), 404
+
+
+@app.errorhandler(500)
+def server_error(error):
+
+    return jsonify({
+
+        "ok": False,
+
+        "error":
+            "Erro interno do servidor."
+
+    }), 500
+
+
+# ================================================================
+# EXECUÇÃO
+# ================================================================
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port, debug=False)
+
+    print("=" * 60)
+
+    print(
+        "🚀 INVEST ANALYZER PRO 6.0"
+    )
+
+    print(
+        "📊 Flask + Yahoo Finance"
+    )
+
+    print(
+        "💼 Carteira + Indicadores + Ranking"
+    )
+
+    print(
+        f"🌐 Porta: {PORT}"
+    )
+
+    print("=" * 60)
+
+    app.run(
+        host="0.0.0.0",
+        port=PORT,
+        debug=False
+    )
+⚠️ E tem uma coisa importante no Render
+O app.py sozinho não instala as bibliotecas. No seu requirements.txt, coloque exatamente:
+Flask
+gunicorn
+yfinance
+pandas
+numpy
+openpyxl
+E no Render, o Start Command deve ser:
+gunicorn app:app
+Não coloque python app.py como Start Command.
+Estrutura do seu GitHub
+Deixe assim:
+seu-projeto/
+│
+├── app.py
+│
+└── requirements.txt
+Depois faça:
+Substitua o app.py inteiro pelo código acima.
+Substitua o requirements.txt.
+Salve.
+Faça commit no GitHub.
+O Render fará o novo deploy.
+Abra seu site.
+Teste primeiro PETR4.
+Depois teste AAPL.
+Depois teste MXRF11.
+Observação importante: a carteira desse código fica na memória do processo. No Render, ela pode ser perdida quando o serviço reiniciar. Para a próxima versão, o ideal é colocar SQLite/PostgreSQL + login, para cada usuário ter sua própria carteira salva permanentemente.
