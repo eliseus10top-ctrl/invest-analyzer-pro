@@ -686,6 +686,11 @@ def whatsapp():
 def ativar_assinatura():
     user = get_or_create_user()
     user.is_subscribed = True
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    "DATABASE_URL", 
+    "sqlite:////tmp/propostas.db"
+)
+
     user.subscription_expires = datetime.utcnow() + timedelta(days=30)
     db.session.commit()
     flash("✅ Assinatura ativada! Agora você pode gerar propostas ilimitadas!")
