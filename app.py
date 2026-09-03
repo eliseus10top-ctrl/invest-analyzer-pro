@@ -29,7 +29,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import ipywidgets as widgets
+
 
 from IPython.display import display, HTML, clear_output
 import warnings
