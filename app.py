@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, send_file, redirect, flash
+from flask import Flask, request, render_template_string, send_file, redirect, flash, make_response
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -8,15 +8,43 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     HRFlowable, KeepTogether
 )
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 from datetime import datetime
 from urllib.parse import quote
 import re
 import os
 import html
+import logging
+
+# ============================================================
+# CONFIGURAÇÃO INICIAL
+# ============================================================
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "proposta-exclusiva-secret")
+
+# ✅ SEGURANÇA: Exigir SECRET_KEY via variável de ambiente
+if not os.environ.get("SECRET_KEY"):
+    raise RuntimeError("ERRO: A variável de ambiente SECRET_KEY não está definida!")
+app.secret_key = os.environ["SECRET_KEY"]
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# FONTE SUPORTE A ACENTOS NO PDF
+# ============================================================
+
+try:
+    # Tenta registrar fonte que suporta acentos
+    pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
+    FONT_NAME = 'DejaVuSans'
+except Exception:
+    # Fallback para Helvetica se não encontrar a fonte
+    FONT_NAME = 'Helvetica'
+    logger.warning(f"Fonte DejaVuSans não encontrada, usando {FONT_NAME}. Acentos podem não aparecer corretamente no PDF.")
 
 # ============================================================
 # INTERFACE WEB — VISUAL PREMIUM / LUXO
@@ -122,7 +150,7 @@ body{
 .section:last-of-type{border-bottom:0;margin-bottom:0}
 .section-title{
   display:flex;align-items:center;gap:11px;
-  margin:0 0 18px;font-size:18px;letter-spacing:-.35px;
+  margin:0 0 18px;font-size:18px;letter-spacing-.35px;
 }
 .num{
   width:32px;height:32px;border-radius:11px;
@@ -245,23 +273,23 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.12
       <div class="grid">
         <div class="field">
           <label>Nome da empresa *</label>
-          <input name="empresa" required value="{{ data.get('empresa','') }}" placeholder="Ex.: Luana Serviços">
+          <input name="empresa" required maxlength="100" value="{{ data.get('empresa','') }}" placeholder="Ex.: Luana Serviços">
         </div>
         <div class="field">
           <label>Telefone / WhatsApp</label>
-          <input name="empresa_whatsapp" value="{{ data.get('empresa_whatsapp','') }}" placeholder="(77) 99999-9999">
+          <input name="empresa_whatsapp" maxlength="20" value="{{ data.get('empresa_whatsapp','') }}" placeholder="(77) 99999-9999">
         </div>
         <div class="field">
           <label>E-mail</label>
-          <input type="email" name="empresa_email" value="{{ data.get('empresa_email','') }}" placeholder="contato@empresa.com">
+          <input type="email" name="empresa_email" maxlength="100" value="{{ data.get('empresa_email','') }}" placeholder="contato@empresa.com">
         </div>
         <div class="field">
           <label>Cidade / Estado</label>
-          <input name="empresa_local" value="{{ data.get('empresa_local','') }}" placeholder="Vitória da Conquista - BA">
+          <input name="empresa_local" maxlength="60" value="{{ data.get('empresa_local','') }}" placeholder="Vitória da Conquista - BA">
         </div>
         <div class="field full">
           <label>CPF / CNPJ <span style="font-weight:500;color:#98a2b3">(opcional)</span></label>
-          <input name="empresa_doc" value="{{ data.get('empresa_doc','') }}" placeholder="00.000.000/0001-00">
+          <input name="empresa_doc" maxlength="20" value="{{ data.get('empresa_doc','') }}" placeholder="00.000.000/0001-00">
         </div>
       </div>
     </div>
@@ -271,15 +299,15 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.12
       <div class="grid">
         <div class="field">
           <label>Nome do cliente *</label>
-          <input name="cliente" required value="{{ data.get('cliente','') }}" placeholder="Nome completo">
+          <input name="cliente" required maxlength="100" value="{{ data.get('cliente','') }}" placeholder="Nome completo">
         </div>
         <div class="field">
           <label>WhatsApp do cliente</label>
-          <input name="whatsapp" value="{{ data.get('whatsapp','') }}" placeholder="(77) 98888-8888">
+          <input name="whatsapp" maxlength="20" value="{{ data.get('whatsapp','') }}" placeholder="(77) 98888-8888">
         </div>
         <div class="field full">
           <label>Endereço</label>
-          <input name="endereco" value="{{ data.get('endereco','') }}" placeholder="Rua, número, bairro, cidade">
+          <input name="endereco" maxlength="150" value="{{ data.get('endereco','') }}" placeholder="Rua, número, bairro, cidade">
         </div>
       </div>
     </div>
@@ -289,7 +317,7 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.12
       <div class="grid">
         <div class="field full">
           <label>Serviço / proposta *</label>
-          <input name="servico" required value="{{ data.get('servico','') }}" placeholder="Ex.: Instalação e manutenção de porta">
+          <input name="servico" required maxlength="120" value="{{ data.get('servico','') }}" placeholder="Ex.: Instalação e manutenção de porta">
         </div>
         <div class="field full">
           <label>Descrição detalhada</label>
@@ -306,19 +334,19 @@ button:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(16,24,40,.12
         </div>
         <div class="field">
           <label>Prazo de execução</label>
-          <input name="prazo" value="{{ data.get('prazo','') }}" placeholder="2 dias úteis">
+          <input name="prazo" maxlength="50" value="{{ data.get('prazo','') }}" placeholder="2 dias úteis">
         </div>
         <div class="field">
           <label>Validade da proposta</label>
-          <input name="validade" value="{{ data.get('validade','7 dias') }}" placeholder="7 dias">
+          <input name="validade" maxlength="30" value="{{ data.get('validade','7 dias') }}" placeholder="7 dias">
         </div>
         <div class="field">
           <label>Forma de pagamento</label>
-          <input name="pagamento" value="{{ data.get('pagamento','') }}" placeholder="50% na aprovação + 50% na entrega">
+          <input name="pagamento" maxlength="80" value="{{ data.get('pagamento','') }}" placeholder="50% na aprovação + 50% na entrega">
         </div>
         <div class="field">
           <label>Garantia</label>
-          <input name="garantia" value="{{ data.get('garantia','') }}" placeholder="90 dias">
+          <input name="garantia" maxlength="40" value="{{ data.get('garantia','') }}" placeholder="90 dias">
         </div>
       </div>
 
@@ -363,8 +391,43 @@ function enviarWhatsApp(){
 """
 
 # ============================================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES AUXILIARES — VALIDAÇÕES MELHORADAS
 # ============================================================
+
+MAX_LENGTHS = {
+    "empresa": 100, "empresa_whatsapp": 20, "empresa_email": 100,
+    "empresa_local": 60, "empresa_doc": 20, "cliente": 100,
+    "whatsapp": 20, "endereco": 150, "servico": 120, "descricao": 900,
+    "prazo": 50, "validade": 30, "pagamento": 80, "garantia": 40,
+    "observacoes": 700
+}
+
+EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+
+def sanitize_and_validate(data):
+    """Sanitiza e valida todos os campos do lado do servidor."""
+    for field, max_len in MAX_LENGTHS.items():
+        value = data.get(field, "")
+        if len(value) > max_len:
+            raise ValueError(f"Campo '{field}' excede o limite de {max_len} caracteres.")
+        # Remove scripts e tags HTML
+        if value:
+            data[field] = html.escape(value.strip(), quote=False)
+
+    # Valida e-mail se fornecido
+    email = data.get("empresa_email", "")
+    if email and not EMAIL_PATTERN.match(email):
+        raise ValueError("O e-mail informado é inválido.")
+
+    # Valida telefones
+    for phone_field in ["empresa_whatsapp", "whatsapp"]:
+        phone = data.get(phone_field, "")
+        if phone:
+            digits = clean_phone(phone)
+            if len(digits) not in (0, 10, 11):
+                raise ValueError(f"O número {phone_field} precisa ter 10 ou 11 dígitos.")
+
+    return data
 
 def clean_phone(phone):
     return re.sub(r"\D", "", phone or "")
@@ -373,12 +436,7 @@ def clean_phone(phone):
 def parse_money(value, field_name="Valor"):
     """
     Aceita:
-      230
-      230,00
-      230.00
-      R$ 230,00
-      1.230,50
-      1,230.50
+      230 / 230,00 / 230.00 / R$ 230,00 / 1.230,50 / 1,230.50
     """
     raw = str(value or "").strip()
     if not raw:
@@ -445,7 +503,7 @@ def short(value, max_chars=900):
 
 
 # ============================================================
-# PDF PREMIUM / LUXO — PRETO + DOURADO
+# PDF PREMIUM / LUXO — PRETO + DOURADO + FONTE COM ACENTOS
 # ============================================================
 
 def generate_pdf(data):
@@ -482,13 +540,13 @@ def generate_pdf(data):
     styles = getSampleStyleSheet()
 
     # --------------------------------------------------------
-    # ESTILOS
+    # ESTILOS — USANDO FONTE COM SUPORTE A ACENTOS
     # --------------------------------------------------------
 
     styles.add(ParagraphStyle(
         name="BrandPro",
         parent=styles["Title"],
-        fontName="Helvetica-Bold",
+        fontName=FONT_NAME,
         fontSize=23,
         leading=25,
         textColor=colors.white,
@@ -499,7 +557,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="TinyPro",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=FONT_NAME,
         fontSize=7.1,
         leading=9.1,
         textColor=colors.HexColor("#D6D1C8")
@@ -508,7 +566,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="LabelPro",
         parent=styles["Normal"],
-        fontName="Helvetica-Bold",
+        fontName=FONT_NAME + "-Bold",
         fontSize=7.1,
         leading=8.8,
         textColor=colors.HexColor("#6D665C")
@@ -517,7 +575,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="BodyPro",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=FONT_NAME,
         fontSize=8.3,
         leading=11.0,
         textColor=colors.HexColor("#34312D")
@@ -526,7 +584,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="SectionPro",
         parent=styles["Heading2"],
-        fontName="Helvetica-Bold",
+        fontName=FONT_NAME + "-Bold",
         fontSize=9.3,
         leading=11,
         textColor=colors.HexColor("#171717"),
@@ -537,7 +595,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="BigValuePro",
         parent=styles["Normal"],
-        fontName="Helvetica-Bold",
+        fontName=FONT_NAME + "-Bold",
         fontSize=22,
         leading=24,
         textColor=colors.white,
@@ -547,7 +605,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="CenterPro",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=FONT_NAME,
         fontSize=7.1,
         leading=8.8,
         textColor=colors.HexColor("#737373"),
@@ -557,7 +615,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="CenterBoldPro",
         parent=styles["Normal"],
-        fontName="Helvetica-Bold",
+        fontName=FONT_NAME + "-Bold",
         fontSize=7.5,
         leading=9.0,
         textColor=colors.HexColor("#171717"),
@@ -567,7 +625,7 @@ def generate_pdf(data):
     styles.add(ParagraphStyle(
         name="GoldCenter",
         parent=styles["Normal"],
-        fontName="Helvetica-Bold",
+        fontName=FONT_NAME + "-Bold",
         fontSize=7.4,
         leading=9,
         textColor=colors.HexColor("#8A6837"),
@@ -631,7 +689,7 @@ def generate_pdf(data):
     header_left = [
         Paragraph(company, styles["BrandPro"]),
         Paragraph(
-            f"Proposta nº <b>{numero}</b> &nbsp; • &nbsp; Emitida em {data_emissao}",
+            f"Proposta nº <b>{numero}</b> &nbsp;•&nbsp; Emitida em {data_emissao}",
             styles["TinyPro"]
         )
     ]
@@ -993,7 +1051,7 @@ def generate_pdf(data):
             8.5*mm
         )
 
-        canvas.setFont("Helvetica", 6.8)
+        canvas.setFont(FONT_NAME, 6.8)
         canvas.setFillColor(gray)
 
         canvas.drawString(
@@ -1021,8 +1079,19 @@ def generate_pdf(data):
 
 
 # ============================================================
-# ROTAS
+# ROTAS + CABEÇALHOS DE SEGURANÇA
 # ============================================================
+
+@app.after_request
+def add_security_headers(response):
+    """✅ Cabeçalhos de segurança para proteção contra ataques comuns."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return response
+
 
 @app.route("/", methods=["GET"])
 def index():
@@ -1034,27 +1103,22 @@ def gerar_pdf():
     data = request.form.to_dict()
 
     try:
+        # ✅ Sanitização e validação completa no lado do servidor
+        data = sanitize_and_validate(data)
         pdf, numero = generate_pdf(data)
 
     except ValueError as e:
         flash(str(e))
-        return render_template_string(
-            HTML,
-            data=data
-        ), 400
+        logger.warning(f"Validação falhou: {e}")
+        return render_template_string(HTML, data=data), 400
 
     except Exception:
-        app.logger.exception(
-            "Erro inesperado ao gerar PDF"
-        )
+        logger.exception("Erro inesperado ao gerar PDF")
         flash(
             "Não foi possível gerar o PDF. "
             "Verifique os valores e tente novamente."
         )
-        return render_template_string(
-            HTML,
-            data=data
-        ), 500
+        return render_template_string(HTML, data=data), 500
 
     filename = f"proposta_exclusiva_{numero}.pdf"
 
@@ -1070,47 +1134,32 @@ def gerar_pdf():
 def whatsapp():
     data = request.form.to_dict()
 
-    phone = clean_phone(
-        data.get("whatsapp", "")
-    )
+    try:
+        # ✅ Sanitização também aqui
+        data = sanitize_and_validate(data)
+    except ValueError as e:
+        return str(e), 400
+
+    phone = clean_phone(data.get("whatsapp", ""))
 
     if not phone:
         return "Informe o WhatsApp do cliente.", 400
 
     try:
-        valor = parse_money(
-            data.get("valor"),
-            "Valor do serviço"
-        )
-
-        desconto = (
-            parse_money(
-                data.get("desconto"),
-                "Desconto"
-            )
-            if data.get("desconto")
-            else 0.0
-        )
+        valor = parse_money(data.get("valor"), "Valor do serviço")
+        desconto = parse_money(data.get("desconto"), "Desconto") if data.get("desconto") else 0.0
 
         if desconto > valor:
-            return (
-                "O desconto não pode ser maior "
-                "que o valor do serviço.",
-                400
-            )
+            return "O desconto não pode ser maior que o valor do serviço.", 400
 
-        total = max(
-            0.0,
-            valor - desconto
-        )
+        total = max(0.0, valor - desconto)
 
     except ValueError as e:
         return str(e), 400
 
     text = (
         f"Olá, {data.get('cliente','')}! "
-        f"Segue a proposta da "
-        f"{data.get('empresa','')} "
+        f"Segue a proposta da {data.get('empresa','')} "
         f"para {data.get('servico','')}. "
         f"Valor total: {money_br(total)}. "
         f"Prazo: {data.get('prazo','a combinar')}. "
@@ -1118,10 +1167,7 @@ def whatsapp():
     )
 
     return redirect(
-        "https://wa.me/"
-        + phone
-        + "?text="
-        + quote(text)
+        "https://wa.me/" + phone + "?text=" + quote(text)
     )
 
 
@@ -1135,12 +1181,5 @@ def health():
 # ============================================================
 
 if __name__ == "__main__":
-    port = int(
-        os.environ.get("PORT", 5000)
-    )
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
