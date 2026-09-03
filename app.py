@@ -1,36 +1,48 @@
 # ================================================================
-# 🚀 PROPOSTA EXCLUSIVA 5.0
+# 🚀 PROPOSTA EXCLUSIVA 7.0
+# SISTEMA PROFISSIONAL PARA AUTÔNOMOS
 # ================================================================
-# 📄 Propostas profissionais
-# 💼 Currículos profissionais
-# 🧾 Orçamentos profissionais
-# 📝 Contratos
-# 📱 Mensagens profissionais para WhatsApp
-# 💳 Cartão digital
-# 👤 Perfil profissional
-# 🔗 Página profissional compartilhável
-# 📚 Histórico de documentos
-# 📱 Interface responsiva
-# 🚀 Compatível com Render
-# 💰 Sem pagamento
+#
+# ✔ Cadastro de usuário
+# ✔ Login / Logout
+# ✔ Senha protegida
+# ✔ Dados separados por usuário
+# ✔ Clientes
+# ✔ Propostas
+# ✔ Orçamentos
+# ✔ Contratos
+# ✔ Currículos
+# ✔ WhatsApp
+# ✔ Recibos
+# ✔ Agenda
+# ✔ Financeiro
+# ✔ Histórico
+# ✔ PDFs
+# ✔ PostgreSQL / SQLite
+# ✔ Render / Gunicorn
+# ✔ Interface responsiva para celular
+#
 # ================================================================
 
 import os
 import re
-import uuid
+import secrets
 from datetime import datetime
-from urllib.parse import quote
+from functools import wraps
 
 from flask import (
     Flask,
     request,
+    redirect,
+    url_for,
+    session,
     render_template_string,
     send_file,
-    redirect,
-    url_for
+    flash
 )
 
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -43,7 +55,7 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
-    HRFlowable
+    PageBreak
 )
 
 
@@ -53,9 +65,9 @@ from reportlab.platypus import (
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.environ.get(
+app.secret_key = os.environ.get(
     "SECRET_KEY",
-    "proposta-exclusiva-5-secret"
+    secrets.token_hex(32)
 )
 
 database_url = os.environ.get(
@@ -71,27 +83,53 @@ if database_url.startswith("postgres://"):
     )
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
 
 # ================================================================
-# BANCO DE DADOS
+# MODELOS DO BANCO
 # ================================================================
 
-class UserProfile(db.Model):
+class Usuario(db.Model):
+    __tablename__ = "usuarios"
 
-    id = db.Column(
-        db.Integer,
-        primary_key=True
+    id = db.Column(db.Integer, primary_key=True)
+
+    nome = db.Column(
+        db.String(120),
+        nullable=False
     )
 
-    slug = db.Column(
-        db.String(120),
+    email = db.Column(
+        db.String(160),
         unique=True,
+        nullable=False,
+        index=True
+    )
+
+    senha = db.Column(
+        db.String(255),
         nullable=False
+    )
+
+    criado_em = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+
+class Cliente(db.Model):
+    __tablename__ = "clientes"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    usuario_id = db.Column(
+        db.Integer,
+        db.ForeignKey("usuarios.id"),
+        nullable=False,
+        index=True
     )
 
     nome = db.Column(
@@ -99,40 +137,20 @@ class UserProfile(db.Model):
         nullable=False
     )
 
-    profissao = db.Column(
-        db.String(150)
-    )
-
     telefone = db.Column(
-        db.String(50)
+        db.String(40)
     )
 
     email = db.Column(
-        db.String(150)
+        db.String(160)
     )
 
-    cidade = db.Column(
-        db.String(150)
+    endereco = db.Column(
+        db.String(250)
     )
 
-    descricao = db.Column(
+    observacoes = db.Column(
         db.Text
-    )
-
-    habilidades = db.Column(
-        db.Text
-    )
-
-    experiencia = db.Column(
-        db.Text
-    )
-
-    servicos = db.Column(
-        db.Text
-    )
-
-    instagram = db.Column(
-        db.String(300)
     )
 
     criado_em = db.Column(
@@ -141,24 +159,35 @@ class UserProfile(db.Model):
     )
 
 
-class DocumentHistory(db.Model):
+class Servico(db.Model):
+    __tablename__ = "servicos"
 
-    id = db.Column(
+    id = db.Column(db.Integer, primary_key=True)
+
+    usuario_id = db.Column(
         db.Integer,
-        primary_key=True
+        db.ForeignKey("usuarios.id"),
+        nullable=False,
+        index=True
     )
 
-    tipo = db.Column(
-        db.String(80),
+    cliente_id = db.Column(
+        db.Integer,
+        db.ForeignKey("clientes.id"),
+        nullable=True
+    )
+
+    titulo = db.Column(
+        db.String(200),
         nullable=False
-    )
-
-    cliente = db.Column(
-        db.String(150)
     )
 
     descricao = db.Column(
         db.Text
+    )
+
+    data = db.Column(
+        db.String(30)
     )
 
     valor = db.Column(
@@ -166,90 +195,123 @@ class DocumentHistory(db.Model):
         default=0
     )
 
+    status = db.Column(
+        db.String(50),
+        default="Agendado"
+    )
+
     criado_em = db.Column(
         db.DateTime,
         default=datetime.utcnow
     )
 
 
+class Movimento(db.Model):
+    __tablename__ = "movimentos"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    usuario_id = db.Column(
+        db.Integer,
+        db.ForeignKey("usuarios.id"),
+        nullable=False,
+        index=True
+    )
+
+    tipo = db.Column(
+        db.String(20),
+        nullable=False
+    )
+
+    descricao = db.Column(
+        db.String(250),
+        nullable=False
+    )
+
+    valor = db.Column(
+        db.Float,
+        nullable=False
+    )
+
+    data = db.Column(
+        db.String(30)
+    )
+
+    criado_em = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+
+class Documento(db.Model):
+    __tablename__ = "documentos"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    usuario_id = db.Column(
+        db.Integer,
+        db.ForeignKey("usuarios.id"),
+        nullable=False,
+        index=True
+    )
+
+    tipo = db.Column(
+        db.String(50),
+        nullable=False
+    )
+
+    cliente = db.Column(
+        db.String(150)
+    )
+
+    titulo = db.Column(
+        db.String(250)
+    )
+
+    criado_em = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+
+# ================================================================
+# CRIAÇÃO DAS TABELAS
+# ================================================================
+
 with app.app_context():
-
     db.create_all()
-
-
-# ================================================================
-# PROFISSÕES
-# ================================================================
-
-PROFISSOES = [
-    "Pedreiro",
-    "Eletricista",
-    "Encanador",
-    "Pintor",
-    "Mecânico",
-    "Técnico de celular",
-    "Informática",
-    "Fotógrafo",
-    "Designer",
-    "Jardineiro",
-    "Instalador",
-    "Marceneiro",
-    "Professor",
-    "Artista",
-    "Outro"
-]
 
 
 # ================================================================
 # FUNÇÕES AUXILIARES
 # ================================================================
 
-def dinheiro(valor):
+def usuario_atual():
+    user_id = session.get("usuario_id")
 
-    if not valor:
-        return 0.0
+    if not user_id:
+        return None
 
-    valor = str(valor).strip()
-
-    valor = re.sub(
-        r"[^\d,.-]",
-        "",
-        valor
-    )
-
-    if "," in valor:
-
-        valor = valor.replace(
-            ".",
-            ""
-        )
-
-        valor = valor.replace(
-            ",",
-            "."
-        )
-
-    try:
-
-        return float(valor)
-
-    except Exception:
-
-        return 0.0
-
-
-def moeda(valor):
-
-    return (
-        f"R$ {valor:,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
+    return db.session.get(
+        Usuario,
+        user_id
     )
 
 
-def telefone_whatsapp(numero):
+def login_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
 
+        if not session.get("usuario_id"):
+            flash("Faça login para continuar.")
+            return redirect(url_for("login"))
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+def limpar_telefone(numero):
     if not numero:
         return ""
 
@@ -260,1561 +322,114 @@ def telefone_whatsapp(numero):
     )
 
     if numero.startswith("55"):
-
         return numero
 
-    if len(numero) in [10, 11]:
-
-        return "55" + numero
-
-    return numero
+    return "55" + numero
 
 
-def criar_slug(nome):
+def dinheiro(valor):
+    if valor is None:
+        return 0.0
 
-    slug = re.sub(
-        r"[^a-zA-Z0-9]+",
-        "-",
-        nome.lower()
-    ).strip("-")
+    valor = str(valor).strip()
 
-    if not slug:
+    if not valor:
+        return 0.0
 
-        slug = "profissional"
+    valor = valor.replace("R$", "")
+    valor = valor.replace(" ", "")
 
-    original = slug
-
-    contador = 1
-
-    while UserProfile.query.filter_by(
-        slug=slug
-    ).first():
-
-        contador += 1
-
-        slug = (
-            original
-            + "-"
-            + str(contador)
-        )
-
-    return slug
-
-
-def registrar_documento(
-    tipo,
-    cliente="",
-    descricao="",
-    valor=0
-):
+    if "," in valor:
+        valor = valor.replace(".", "")
+        valor = valor.replace(",", ".")
 
     try:
+        return float(valor)
+    except:
+        return 0.0
 
-        documento = DocumentHistory(
 
-            tipo=tipo,
-
-            cliente=cliente,
-
-            descricao=descricao,
-
-            valor=valor
-
+def brl(valor):
+    try:
+        return (
+            "R$ "
+            + f"{float(valor):,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
         )
-
-        db.session.add(
-            documento
-        )
-
-        db.session.commit()
-
-    except Exception:
-
-        db.session.rollback()
+    except:
+        return "R$ 0,00"
 
 
-# ================================================================
-# ESTILOS PDF
-# ================================================================
+def escape_pdf(texto):
+    if texto is None:
+        return ""
 
-def estilos_pdf():
+    texto = str(texto)
 
-    estilos = getSampleStyleSheet()
+    texto = texto.replace("&", "&amp;")
+    texto = texto.replace("<", "&lt;")
+    texto = texto.replace(">", "&gt;")
 
-    estilos.add(
-        ParagraphStyle(
-            name="TituloPrincipal",
-            parent=estilos["Title"],
-            fontSize=22,
-            leading=26,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor("#111111"),
-            spaceAfter=8
-        )
+    return texto
+
+
+def registrar_documento(tipo, cliente="", titulo=""):
+
+    documento = Documento(
+        usuario_id=session["usuario_id"],
+        tipo=tipo,
+        cliente=cliente,
+        titulo=titulo
     )
 
-    estilos.add(
-        ParagraphStyle(
-            name="Subtitulo",
-            parent=estilos["Normal"],
-            fontSize=10,
-            leading=14,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor("#555555"),
-            spaceAfter=12
-        )
+    db.session.add(documento)
+    db.session.commit()
+
+
+def gerar_pdf_base(nome_arquivo, titulo):
+
+    caminho = os.path.join(
+        "/tmp",
+        nome_arquivo
     )
 
-    estilos.add(
-        ParagraphStyle(
-            name="Secao",
-            parent=estilos["Heading2"],
-            fontSize=13,
-            leading=16,
-            textColor=colors.HexColor("#B8860B"),
-            spaceBefore=12,
-            spaceAfter=7
-        )
-    )
-
-    estilos.add(
-        ParagraphStyle(
-            name="NormalCustom",
-            parent=estilos["Normal"],
-            fontSize=10,
-            leading=15,
-            textColor=colors.HexColor("#222222")
-        )
-    )
-
-    estilos.add(
-        ParagraphStyle(
-            name="Pequeno",
-            parent=estilos["Normal"],
-            fontSize=8,
-            leading=11,
-            textColor=colors.HexColor("#666666")
-        )
-    )
-
-    return estilos
-
-
-def cabecalho_pdf(
-    elementos,
-    titulo,
-    subtitulo
-):
-
-    estilos = estilos_pdf()
-
-    elementos.append(
-        Paragraph(
-            titulo,
-            estilos["TituloPrincipal"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            subtitulo,
-            estilos["Subtitulo"]
-        )
-    )
-
-    elementos.append(
-        HRFlowable(
-            width="100%",
-            thickness=1,
-            color=colors.HexColor("#B8860B"),
-            spaceAfter=12
-        )
-    )
-
-
-# ================================================================
-# PDF — PROPOSTA
-# ================================================================
-
-def criar_pdf_proposta(dados):
-
-    arquivo = "/tmp/proposta_exclusiva.pdf"
-
-    documento = SimpleDocTemplate(
-        arquivo,
+    doc = SimpleDocTemplate(
+        caminho,
         pagesize=A4,
         rightMargin=1.5 * cm,
         leftMargin=1.5 * cm,
-        topMargin=1.4 * cm,
-        bottomMargin=1.4 * cm
-    )
-
-    estilos = estilos_pdf()
-
-    elementos = []
-
-    valor = dinheiro(
-        dados.get("valor")
-    )
-
-    desconto = dinheiro(
-        dados.get("desconto")
-    )
-
-    total = max(
-        valor - desconto,
-        0
-    )
-
-    cabecalho_pdf(
-        elementos,
-        "PROPOSTA COMERCIAL",
-        "PROPOSTA EXCLUSIVA"
-    )
-
-    tabela_info = Table(
-        [
-            [
-                Paragraph(
-                    "<b>Prestador</b><br/>"
-                    + str(
-                        dados.get(
-                            "prestador",
-                            ""
-                        )
-                    ),
-                    estilos["NormalCustom"]
-                ),
-
-                Paragraph(
-                    "<b>Data</b><br/>"
-                    + datetime.now().strftime(
-                        "%d/%m/%Y"
-                    ),
-                    estilos["NormalCustom"]
-                )
-            ],
-
-            [
-                Paragraph(
-                    "<b>Profissão</b><br/>"
-                    + str(
-                        dados.get(
-                            "profissao",
-                            ""
-                        )
-                    ),
-                    estilos["NormalCustom"]
-                ),
-
-                Paragraph(
-                    "<b>Cliente</b><br/>"
-                    + str(
-                        dados.get(
-                            "cliente",
-                            ""
-                        )
-                    ),
-                    estilos["NormalCustom"]
-                )
-            ]
-        ],
-
-        colWidths=[
-            9 * cm,
-            8 * cm
-        ]
-    )
-
-    tabela_info.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    colors.HexColor("#F7F7F7")
-                ),
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#DDDDDD")
-                ),
-                (
-                    "INNERGRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.3,
-                    colors.HexColor("#DDDDDD")
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP"
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        tabela_info
-    )
-
-    elementos.append(
-        Paragraph(
-            "DADOS DO CLIENTE",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            f"<b>Nome:</b> "
-            f"{dados.get('cliente', '')}<br/>"
-            f"<b>Telefone:</b> "
-            f"{dados.get('telefone', '')}<br/>"
-            f"<b>Endereço:</b> "
-            f"{dados.get('endereco', '')}",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "DESCRIÇÃO DO SERVIÇO",
-            estilos["Secao"]
-        )
-    )
-
-    descricao = dados.get(
-        "descricao",
-        ""
-    ).replace(
-        "\n",
-        "<br/>"
-    )
-
-    elementos.append(
-        Paragraph(
-            descricao or
-            "Serviço conforme combinado.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "VALORES",
-            estilos["Secao"]
-        )
-    )
-
-    tabela_valores = Table(
-        [
-            [
-                "Valor do serviço",
-                moeda(valor)
-            ],
-            [
-                "Desconto",
-                moeda(desconto)
-            ],
-            [
-                "TOTAL",
-                moeda(total)
-            ]
-        ],
-        colWidths=[
-            11 * cm,
-            6 * cm
-        ]
-    )
-
-    tabela_valores.setStyle(
-        TableStyle(
-            [
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#DDDDDD")
-                ),
-                (
-                    "BACKGROUND",
-                    (0, 2),
-                    (-1, 2),
-                    colors.HexColor("#F2F2F2")
-                ),
-                (
-                    "FONTNAME",
-                    (0, 2),
-                    (-1, 2),
-                    "Helvetica-Bold"
-                ),
-                (
-                    "ALIGN",
-                    (1, 0),
-                    (1, -1),
-                    "RIGHT"
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        tabela_valores
-    )
-
-    elementos.append(
-        Paragraph(
-            "CONDIÇÕES COMERCIAIS",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            dados.get(
-                "condicoes",
-                "Condições conforme combinado."
-            ).replace(
-                "\n",
-                "<br/>"
-            ),
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "OBSERVAÇÕES",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            dados.get(
-                "observacoes",
-                "Sem observações."
-            ).replace(
-                "\n",
-                "<br/>"
-            ),
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Spacer(
-            1,
-            25
-        )
-    )
-
-    assinatura = Table(
-        [
-            [
-                "____________________________",
-                "____________________________"
-            ],
-            [
-                "Prestador",
-                "Cliente"
-            ]
-        ],
-        colWidths=[
-            8.5 * cm,
-            8.5 * cm
-        ]
-    )
-
-    assinatura.setStyle(
-        TableStyle(
-            [
-                (
-                    "ALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "CENTER"
-                ),
-                (
-                    "FONTNAME",
-                    (0, 1),
-                    (-1, 1),
-                    "Helvetica-Bold"
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        assinatura
-    )
-
-    elementos.append(
-        Spacer(
-            1,
-            15
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "Documento gerado pelo Proposta Exclusiva 5.0.",
-            estilos["Pequeno"]
-        )
-    )
-
-    documento.build(
-        elementos
-    )
-
-    return arquivo
-
-
-# ================================================================
-# PDF — CURRÍCULO
-# ================================================================
-
-def criar_pdf_curriculo(dados):
-
-    arquivo = "/tmp/curriculo_profissional.pdf"
-
-    documento = SimpleDocTemplate(
-        arquivo,
-        pagesize=A4,
-        rightMargin=1.6 * cm,
-        leftMargin=1.6 * cm,
         topMargin=1.5 * cm,
         bottomMargin=1.5 * cm
     )
 
-    estilos = estilos_pdf()
+    estilos = getSampleStyleSheet()
 
-    elementos = []
-
-    nome = dados.get("nome", "")
-    profissao = dados.get("profissao", "")
-    telefone = dados.get("telefone", "")
-    email = dados.get("email", "")
-    cidade = dados.get("cidade", "")
-    objetivo = dados.get("objetivo", "")
-    resumo = dados.get("resumo", "")
-    experiencia = dados.get("experiencia", "")
-    formacao = dados.get("formacao", "")
-    cursos = dados.get("cursos", "")
-    habilidades = dados.get("habilidades", "")
-    idiomas = dados.get("idiomas", "")
-
-    elementos.append(
-        Paragraph(
-            nome.upper() or "SEU NOME",
-            estilos["TituloPrincipal"]
-        )
+    titulo_style = ParagraphStyle(
+        "TituloCustom",
+        parent=estilos["Title"],
+        alignment=TA_CENTER,
+        fontSize=20,
+        leading=24,
+        spaceAfter=20
     )
 
-    if profissao:
-
-        elementos.append(
-            Paragraph(
-                profissao,
-                estilos["Subtitulo"]
-            )
-        )
-
-    contato = " | ".join(
-        x for x in [
-            telefone,
-            email,
-            cidade
-        ]
-        if x
+    normal = ParagraphStyle(
+        "NormalCustom",
+        parent=estilos["Normal"],
+        fontSize=10,
+        leading=15
     )
 
-    if contato:
-
-        elementos.append(
-            Paragraph(
-                contato,
-                estilos["Subtitulo"]
-            )
-        )
-
-    elementos.append(
-        HRFlowable(
-            width="100%",
-            thickness=1,
-            color=colors.HexColor("#B8860B"),
-            spaceAfter=12
-        )
-    )
-
-    secoes = [
-
-        (
-            "OBJETIVO PROFISSIONAL",
-            objetivo
-        ),
-
-        (
-            "PERFIL PROFISSIONAL",
-            resumo
-        ),
-
-        (
-            "EXPERIÊNCIA PROFISSIONAL",
-            experiencia
-        ),
-
-        (
-            "FORMAÇÃO ACADÊMICA",
-            formacao
-        ),
-
-        (
-            "CURSOS E CERTIFICAÇÕES",
-            cursos
-        )
-    ]
-
-    for titulo, texto in secoes:
-
-        if texto:
-
-            elementos.append(
-                Paragraph(
-                    titulo,
-                    estilos["Secao"]
-                )
-            )
-
-            elementos.append(
-                Paragraph(
-                    texto.replace(
-                        "\n",
-                        "<br/>"
-                    ),
-                    estilos["NormalCustom"]
-                )
-            )
-
-    if habilidades:
-
-        elementos.append(
-            Paragraph(
-                "HABILIDADES",
-                estilos["Secao"]
-            )
-        )
-
-        for item in habilidades.split(","):
-
-            item = item.strip()
-
-            if item:
-
-                elementos.append(
-                    Paragraph(
-                        "• " + item,
-                        estilos["NormalCustom"]
-                    )
-                )
-
-    if idiomas:
-
-        elementos.append(
-            Paragraph(
-                "IDIOMAS",
-                estilos["Secao"]
-            )
-        )
-
-        elementos.append(
-            Paragraph(
-                idiomas.replace(
-                    "\n",
-                    "<br/>"
-                ),
-                estilos["NormalCustom"]
-            )
-        )
-
-    elementos.append(
-        Spacer(
-            1,
-            20
-        )
-    )
-
-    elementos.append(
-        HRFlowable(
-            width="100%",
-            thickness=0.5,
-            color=colors.HexColor("#CCCCCC")
-        )
-    )
-
-    elementos.append(
-        Spacer(
-            1,
-            8
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "Currículo criado com o Proposta Exclusiva 5.0.",
-            estilos["Pequeno"]
-        )
-    )
-
-    documento.build(
-        elementos
-    )
-
-    return arquivo
+    return caminho, doc, titulo_style, normal
 
 
 # ================================================================
-# PDF — ORÇAMENTO
+# HTML BASE
 # ================================================================
 
-def criar_pdf_orcamento(dados):
-
-    arquivo = "/tmp/orcamento_profissional.pdf"
-
-    documento = SimpleDocTemplate(
-        arquivo,
-        pagesize=A4,
-        rightMargin=1.4 * cm,
-        leftMargin=1.4 * cm,
-        topMargin=1.4 * cm,
-        bottomMargin=1.4 * cm
-    )
-
-    estilos = estilos_pdf()
-
-    elementos = []
-
-    prestador = dados.get(
-        "prestador",
-        ""
-    )
-
-    profissao = dados.get(
-        "profissao",
-        ""
-    )
-
-    cliente = dados.get(
-        "cliente",
-        ""
-    )
-
-    telefone = dados.get(
-        "telefone",
-        ""
-    )
-
-    endereco = dados.get(
-        "endereco",
-        ""
-    )
-
-    materiais = dados.get(
-        "materiais",
-        ""
-    )
-
-    mao_obra = dinheiro(
-        dados.get(
-            "mao_obra"
-        )
-    )
-
-    desconto = dinheiro(
-        dados.get(
-            "desconto"
-        )
-    )
-
-    condicoes = dados.get(
-        "condicoes",
-        ""
-    )
-
-    observacoes = dados.get(
-        "observacoes",
-        ""
-    )
-
-    cabecalho_pdf(
-        elementos,
-        "ORÇAMENTO PROFISSIONAL",
-        "PROPOSTA EXCLUSIVA 5.0"
-    )
-
-    dados_tabela = Table(
-        [
-            [
-                Paragraph(
-                    f"<b>Prestador:</b><br/>"
-                    f"{prestador}",
-                    estilos["NormalCustom"]
-                ),
-
-                Paragraph(
-                    f"<b>Data:</b><br/>"
-                    f"{datetime.now().strftime('%d/%m/%Y')}",
-                    estilos["NormalCustom"]
-                )
-            ],
-
-            [
-                Paragraph(
-                    f"<b>Profissão:</b><br/>"
-                    f"{profissao}",
-                    estilos["NormalCustom"]
-                ),
-
-                Paragraph(
-                    f"<b>Cliente:</b><br/>"
-                    f"{cliente}",
-                    estilos["NormalCustom"]
-                )
-            ]
-        ],
-        colWidths=[
-            9 * cm,
-            8 * cm
-        ]
-    )
-
-    dados_tabela.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    colors.HexColor("#F7F7F7")
-                ),
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#DDDDDD")
-                ),
-                (
-                    "INNERGRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.3,
-                    colors.HexColor("#DDDDDD")
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP"
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        dados_tabela
-    )
-
-    elementos.append(
-        Paragraph(
-            "DADOS DO CLIENTE",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            f"<b>Nome:</b> {cliente}<br/>"
-            f"<b>Telefone:</b> {telefone}<br/>"
-            f"<b>Endereço:</b> {endereco}",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "MATERIAIS / SERVIÇOS",
-            estilos["Secao"]
-        )
-    )
-
-    linhas = []
-
-    total_materiais = 0.0
-
-    if materiais:
-
-        for linha in materiais.splitlines():
-
-            linha = linha.strip()
-
-            if not linha:
-                continue
-
-            partes = linha.split("|")
-
-            descricao = partes[0].strip()
-
-            quantidade = 1.0
-
-            valor_unitario = 0.0
-
-            if len(partes) >= 2:
-
-                quantidade = dinheiro(
-                    partes[1]
-                )
-
-                if quantidade == 0:
-
-                    quantidade = 1.0
-
-            if len(partes) >= 3:
-
-                valor_unitario = dinheiro(
-                    partes[2]
-                )
-
-            subtotal = (
-                quantidade *
-                valor_unitario
-            )
-
-            total_materiais += subtotal
-
-            linhas.append(
-                [
-                    descricao,
-                    str(quantidade),
-                    moeda(valor_unitario),
-                    moeda(subtotal)
-                ]
-            )
-
-    if not linhas:
-
-        linhas.append(
-            [
-                "Serviço",
-                "1",
-                moeda(mao_obra),
-                moeda(mao_obra)
-            ]
-        )
-
-    tabela_itens = Table(
-        [
-            [
-                "Descrição",
-                "Qtd.",
-                "Valor unit.",
-                "Subtotal"
-            ]
-        ] + linhas,
-
-        colWidths=[
-            7.5 * cm,
-            2 * cm,
-            3.5 * cm,
-            4 * cm
-        ],
-
-        repeatRows=1
-    )
-
-    tabela_itens.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, 0),
-                    colors.HexColor("#EEEEEE")
-                ),
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, 0),
-                    "Helvetica-Bold"
-                ),
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#DDDDDD")
-                ),
-                (
-                    "ALIGN",
-                    (1, 1),
-                    (-1, -1),
-                    "RIGHT"
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE"
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        tabela_itens
-    )
-
-    elementos.append(
-        Paragraph(
-            "RESUMO DO ORÇAMENTO",
-            estilos["Secao"]
-        )
-    )
-
-    total_bruto = (
-        total_materiais +
-        mao_obra
-    )
-
-    total_final = max(
-        total_bruto - desconto,
-        0
-    )
-
-    tabela_resumo = Table(
-        [
-            [
-                "Materiais",
-                moeda(total_materiais)
-            ],
-            [
-                "Mão de obra",
-                moeda(mao_obra)
-            ],
-            [
-                "Desconto",
-                moeda(desconto)
-            ],
-            [
-                "TOTAL",
-                moeda(total_final)
-            ]
-        ],
-        colWidths=[
-            11 * cm,
-            6 * cm
-        ]
-    )
-
-    tabela_resumo.setStyle(
-        TableStyle(
-            [
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#DDDDDD")
-                ),
-                (
-                    "BACKGROUND",
-                    (0, 3),
-                    (-1, 3),
-                    colors.HexColor("#F2F2F2")
-                ),
-                (
-                    "FONTNAME",
-                    (0, 3),
-                    (-1, 3),
-                    "Helvetica-Bold"
-                ),
-                (
-                    "ALIGN",
-                    (1, 0),
-                    (1, -1),
-                    "RIGHT"
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        tabela_resumo
-    )
-
-    elementos.append(
-        Paragraph(
-            "CONDIÇÕES DE PAGAMENTO",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            condicoes or
-            "Condições conforme combinado.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "OBSERVAÇÕES",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            observacoes or
-            "Sem observações.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Spacer(
-            1,
-            25
-        )
-    )
-
-    assinatura = Table(
-        [
-            [
-                "____________________________",
-                "____________________________"
-            ],
-            [
-                "Prestador",
-                "Cliente"
-            ]
-        ],
-        colWidths=[
-            8.5 * cm,
-            8.5 * cm
-        ]
-    )
-
-    assinatura.setStyle(
-        TableStyle(
-            [
-                (
-                    "ALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "CENTER"
-                ),
-                (
-                    "FONTNAME",
-                    (0, 1),
-                    (-1, 1),
-                    "Helvetica-Bold"
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        assinatura
-    )
-
-    elementos.append(
-        Spacer(
-            1,
-            15
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "Orçamento criado com o Proposta Exclusiva 5.0.",
-            estilos["Pequeno"]
-        )
-    )
-
-    documento.build(
-        elementos
-    )
-
-    return arquivo
-
-
-# ================================================================
-# PDF — CONTRATO
-# ================================================================
-
-def criar_pdf_contrato(dados):
-
-    arquivo = "/tmp/contrato_profissional.pdf"
-
-    documento = SimpleDocTemplate(
-        arquivo,
-        pagesize=A4,
-        rightMargin=1.7 * cm,
-        leftMargin=1.7 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm
-    )
-
-    estilos = estilos_pdf()
-
-    elementos = []
-
-    prestador = dados.get(
-        "prestador",
-        ""
-    )
-
-    cliente = dados.get(
-        "cliente",
-        ""
-    )
-
-    telefone_prestador = dados.get(
-        "telefone_prestador",
-        ""
-    )
-
-    telefone_cliente = dados.get(
-        "telefone_cliente",
-        ""
-    )
-
-    endereco_cliente = dados.get(
-        "endereco_cliente",
-        ""
-    )
-
-    servico = dados.get(
-        "servico",
-        ""
-    )
-
-    valor = dinheiro(
-        dados.get(
-            "valor"
-        )
-    )
-
-    prazo = dados.get(
-        "prazo",
-        ""
-    )
-
-    pagamento = dados.get(
-        "pagamento",
-        ""
-    )
-
-    observacoes = dados.get(
-        "observacoes",
-        ""
-    )
-
-    cabecalho_pdf(
-        elementos,
-        "CONTRATO DE PRESTAÇÃO DE SERVIÇOS",
-        "PROPOSTA EXCLUSIVA 5.0"
-    )
-
-    elementos.append(
-        Paragraph(
-            "IDENTIFICAÇÃO DAS PARTES",
-            estilos["Secao"]
-        )
-    )
-
-    texto_partes = (
-        f"<b>CONTRATANTE:</b> {cliente}<br/>"
-        f"Telefone: {telefone_cliente}<br/>"
-        f"Endereço: {endereco_cliente}<br/><br/>"
-        f"<b>CONTRATADO:</b> {prestador}<br/>"
-        f"Telefone: {telefone_prestador}"
-    )
-
-    elementos.append(
-        Paragraph(
-            texto_partes,
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "CLÁUSULA 1ª — DO OBJETO",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "O presente contrato tem como objeto a prestação "
-            "do seguinte serviço: "
-            f"<b>{servico}</b>.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "CLÁUSULA 2ª — DO VALOR",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "Pela execução dos serviços descritos neste contrato, "
-            "o CONTRATANTE pagará ao CONTRATADO o valor total de "
-            f"<b>{moeda(valor)}</b>.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "CLÁUSULA 3ª — DO PAGAMENTO",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            pagamento.replace(
-                "\n",
-                "<br/>"
-            )
-            if pagamento
-            else
-            "O pagamento será realizado conforme acordado "
-            "entre as partes.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "CLÁUSULA 4ª — DO PRAZO",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            prazo.replace(
-                "\n",
-                "<br/>"
-            )
-            if prazo
-            else
-            "O prazo será definido de comum acordo.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "CLÁUSULA 5ª — DAS OBRIGAÇÕES",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "O CONTRATADO compromete-se a executar os serviços "
-            "descritos neste documento com zelo e conforme "
-            "as condições acordadas. O CONTRATANTE compromete-se "
-            "a fornecer as informações necessárias e realizar "
-            "os pagamentos nos prazos acordados.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "CLÁUSULA 6ª — DAS DISPOSIÇÕES GERAIS",
-            estilos["Secao"]
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "Qualquer alteração nas condições deste contrato "
-            "deverá ser acordada entre as partes.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    if observacoes:
-
-        elementos.append(
-            Paragraph(
-                "OBSERVAÇÕES",
-                estilos["Secao"]
-            )
-        )
-
-        elementos.append(
-            Paragraph(
-                observacoes.replace(
-                    "\n",
-                    "<br/>"
-                ),
-                estilos["NormalCustom"]
-            )
-        )
-
-    elementos.append(
-        Spacer(
-            1,
-            30
-        )
-    )
-
-    data = datetime.now().strftime(
-        "%d/%m/%Y"
-    )
-
-    elementos.append(
-        Paragraph(
-            f"Local e data: ____________________, {data}.",
-            estilos["NormalCustom"]
-        )
-    )
-
-    elementos.append(
-        Spacer(
-            1,
-            35
-        )
-    )
-
-    assinatura = Table(
-        [
-            [
-                "____________________________",
-                "____________________________"
-            ],
-            [
-                "CONTRATADO",
-                "CONTRATANTE"
-            ]
-        ],
-        colWidths=[
-            8.5 * cm,
-            8.5 * cm
-        ]
-    )
-
-    assinatura.setStyle(
-        TableStyle(
-            [
-                (
-                    "ALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "CENTER"
-                ),
-                (
-                    "FONTNAME",
-                    (0, 1),
-                    (-1, 1),
-                    "Helvetica-Bold"
-                )
-            ]
-        )
-    )
-
-    elementos.append(
-        assinatura
-    )
-
-    elementos.append(
-        Spacer(
-            1,
-            20
-        )
-    )
-
-    elementos.append(
-        Paragraph(
-            "Modelo geral de contrato. Recomenda-se revisar "
-            "o documento conforme a situação específica e, "
-            "quando necessário, buscar orientação jurídica.",
-            estilos["Pequeno"]
-        )
-    )
-
-    documento.build(
-        elementos
-    )
-
-    return arquivo
-
-
-# ================================================================
-# PÁGINA HTML
-# ================================================================
-
-HTML = """
-
-<!DOCTYPE html>
-
-<html lang="pt-BR">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta
-name="viewport"
-content="width=device-width, initial-scale=1.0"
->
-
-<title>Proposta Exclusiva 5.0</title>
-
+STYLE = """
 <style>
 
 * {
@@ -1822,1805 +437,963 @@ content="width=device-width, initial-scale=1.0"
 }
 
 body {
-
     margin: 0;
-
-    font-family:
-        Arial,
-        Helvetica,
-        sans-serif;
-
+    font-family: Arial, sans-serif;
     background: #080808;
-
-    color: white;
+    color: #f5f5f5;
 }
 
 .container {
-
-    width: 92%;
-
-    max-width: 1150px;
-
+    width: 94%;
+    max-width: 1100px;
     margin: auto;
+    padding: 20px 0 50px;
 }
 
-header {
+.header {
+    background: #101010;
+    border-bottom: 1px solid #292929;
+    padding: 15px;
+}
 
-    padding: 25px 0;
-
-    text-align: center;
+.header-inner {
+    max-width: 1100px;
+    margin: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
 }
 
 .logo {
-
-    font-size: 28px;
-
-    font-weight: bold;
-
     color: #d4af37;
+    font-weight: bold;
+    font-size: 20px;
 }
 
-.logo span {
-
-    color: white;
-}
-
-.hero {
-
-    text-align: center;
-
-    padding:
-        20px
-        0
-        40px;
-}
-
-.hero h1 {
-
-    font-size: 36px;
-
-    margin-bottom: 10px;
-}
-
-.hero p {
-
+.user-info {
+    font-size: 13px;
     color: #aaa;
-
-    font-size: 17px;
-
-    line-height: 1.5;
 }
 
-.cards {
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(
-                210px,
-                1fr
-            )
-        );
-
-    gap: 16px;
-
-    margin-bottom: 35px;
+h1, h2, h3 {
+    color: #d4af37;
 }
 
 .card {
-
     background: #111;
+    border: 1px solid #292929;
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 16px;
+}
 
-    border:
-        1px solid
-        #292929;
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 15px;
+}
 
-    border-radius: 18px;
-
-    padding: 22px;
-
+.menu-card {
+    background: #111;
+    border: 1px solid #292929;
+    border-radius: 15px;
+    padding: 20px;
     transition: .2s;
 }
 
-.card:hover {
-
-    transform: translateY(-3px);
-
+.menu-card:hover {
     border-color: #d4af37;
+    transform: translateY(-2px);
 }
 
-.card-icon {
-
-    font-size: 37px;
-}
-
-.card h2 {
-
-    margin-bottom: 7px;
-}
-
-.card p {
-
-    color: #aaa;
-
-    line-height: 1.5;
-
-    min-height: 60px;
-}
-
-.formulario {
-
-    background: #111;
-
-    border:
-        1px solid
-        #292929;
-
-    border-radius: 18px;
-
-    padding: 25px;
-
-    margin-bottom: 30px;
-}
-
-.formulario h2 {
-
-    color: #d4af37;
-
+.menu-card h3 {
     margin-top: 0;
 }
 
-label {
+.menu-card p {
+    color: #aaa;
+    line-height: 1.5;
+}
 
-    display: block;
+a {
+    color: #d4af37;
+    text-decoration: none;
+}
 
-    margin-top: 15px;
-
-    margin-bottom: 7px;
-
+.btn {
+    display: inline-block;
+    background: #d4af37;
+    color: #080808;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 9px;
     font-weight: bold;
+    cursor: pointer;
+    text-decoration: none;
+    margin: 4px 2px;
+}
+
+.btn:hover {
+    opacity: .9;
+}
+
+.btn-secondary {
+    background: #222;
+    color: #fff;
+    border: 1px solid #444;
+}
+
+.btn-danger {
+    background: #8b2222;
+    color: white;
 }
 
 input,
 textarea,
 select {
-
     width: 100%;
-
-    padding: 13px;
-
-    border-radius: 9px;
-
-    border:
-        1px solid
-        #333;
-
-    background: #080808;
-
+    padding: 12px;
+    margin: 7px 0 14px;
+    background: #191919;
     color: white;
-
-    font-size: 15px;
+    border: 1px solid #383838;
+    border-radius: 8px;
 }
 
 textarea {
-
     min-height: 100px;
-
     resize: vertical;
 }
 
-button {
+label {
+    color: #ccc;
+    font-size: 14px;
+}
 
+table {
     width: 100%;
-
-    border: none;
-
-    padding: 14px;
-
-    border-radius: 10px;
-
-    background: #d4af37;
-
-    color: #000;
-
-    font-size: 16px;
-
-    font-weight: bold;
-
-    cursor: pointer;
-}
-
-button:hover {
-
-    opacity: .9;
-}
-
-.btn {
-
-    margin-top: 22px;
-}
-
-.btn-whatsapp {
-
-    background: #25D366;
-
-    color: white;
-
-    margin-top: 10px;
-}
-
-.btn-secundario {
-
-    background: #292929;
-
-    color: white;
-
-    margin-top: 10px;
-}
-
-.btn-perfil {
-
-    background: #7c5cff;
-
-    color: white;
-
-    margin-top: 10px;
-}
-
-.info {
-
-    color: #999;
-
-    font-size: 13px;
-
-    margin-top: 7px;
-
-    line-height: 1.5;
-}
-
-.hidden {
-
-    display: none;
-}
-
-.dashboard {
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(
-                200px,
-                1fr
-            )
-        );
-
-    gap: 15px;
-
-    margin-bottom: 30px;
-}
-
-.stat {
-
-    background: #111;
-
-    border:
-        1px solid
-        #292929;
-
-    border-radius: 15px;
-
-    padding: 20px;
-
-    text-align: center;
-}
-
-.stat-number {
-
-    font-size: 30px;
-
-    font-weight: bold;
-
-    color: #d4af37;
-}
-
-.stat-label {
-
-    color: #999;
-
-    margin-top: 5px;
-}
-
-.history {
-
-    overflow-x: auto;
-}
-
-.history table {
-
-    width: 100%;
-
     border-collapse: collapse;
+    margin-top: 15px;
 }
 
-.history th,
-.history td {
-
-    border-bottom:
-        1px solid
-        #292929;
-
-    padding: 12px;
-
+th,
+td {
+    border-bottom: 1px solid #292929;
+    padding: 10px;
     text-align: left;
 }
 
-.history th {
-
+th {
     color: #d4af37;
 }
 
-.profile-card {
-
-    background: #111;
-
-    border:
-        1px solid
-        #292929;
-
-    border-radius: 18px;
-
-    padding: 25px;
-
-    margin-bottom: 30px;
-}
-
-.profile-name {
-
-    font-size: 29px;
-
-    font-weight: bold;
-
-    color: #d4af37;
-}
-
-.profile-profession {
-
-    color: #ccc;
-
-    font-size: 18px;
-
-    margin-top: 5px;
-}
-
-.link-box {
-
-    background: #080808;
-
-    border:
-        1px solid
-        #292929;
-
-    border-radius: 10px;
-
+.alert {
     padding: 12px;
-
-    margin-top: 15px;
-
-    word-break: break-all;
-
-    color: #aaa;
+    border-radius: 8px;
+    background: #24200f;
+    border: 1px solid #5e5019;
+    margin-bottom: 15px;
 }
 
-footer {
+.stat {
+    font-size: 28px;
+    font-weight: bold;
+    color: #d4af37;
+}
 
+.center {
     text-align: center;
+}
 
-    color: #777;
+.login-box {
+    max-width: 450px;
+    margin: 50px auto;
+}
 
-    padding: 30px 0;
+.small {
+    color: #999;
+    font-size: 13px;
 }
 
 @media(max-width:600px) {
 
-    .hero h1 {
-
-        font-size: 28px;
+    .header-inner {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
-    .logo {
-
-        font-size: 24px;
+    .container {
+        width: 92%;
     }
 
-    .formulario {
-
-        padding: 18px;
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
     }
 
+    .btn {
+        width: 100%;
+        text-align: center;
+    }
 }
 
 </style>
+"""
 
+
+# ================================================================
+# PÁGINA DE LOGIN
+# ================================================================
+
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+<title>Proposta Exclusiva 7.0</title>
+""" + STYLE + """
 </head>
 
 <body>
 
 <div class="container">
 
-<header>
+<div class="login-box">
 
-<div class="logo">
+<div class="card center">
 
-PROPOSTA <span>EXCLUSIVA</span>
+<h1>PROPOSTA EXCLUSIVA</h1>
 
-</div>
-
-</header>
-
-
-<section class="hero">
-
-<h1>
-Sua vida profissional em um só lugar.
-</h1>
-
-<p>
-Crie documentos profissionais,
-divulgue seu trabalho e compartilhe
-seu perfil com clientes.
+<p class="small">
+Sistema profissional para autônomos
 </p>
 
-</section>
-
-
-<!-- ========================================================= -->
-<!-- DASHBOARD -->
-<!-- ========================================================= -->
-
-<div class="dashboard">
-
-<div class="stat">
-
-<div class="stat-number">
-5
-</div>
-
-<div class="stat-label">
-Ferramentas profissionais
-</div>
-
-</div>
-
-<div class="stat">
-
-<div class="stat-number">
-PDF
-</div>
-
-<div class="stat-label">
-Documentos profissionais
-</div>
-
-</div>
-
-<div class="stat">
-
-<div class="stat-number">
-📱
-</div>
-
-<div class="stat-label">
-WhatsApp
-</div>
-
-</div>
-
-<div class="stat">
-
-<div class="stat-number">
-🔗
-</div>
-
-<div class="stat-label">
-Página compartilhável
-</div>
-
-</div>
-
-</div>
-
-
-<!-- ========================================================= -->
-<!-- CARDS -->
-<!-- ========================================================= -->
-
-<div class="cards">
-
-
-<div class="card">
-
-<div class="card-icon">
-📄
-</div>
-
-<h2>
-Proposta
-</h2>
-
-<p>
-Crie uma proposta comercial
-profissional em PDF.
-</p>
-
-<button onclick="mostrar('proposta')">
-CRIAR PROPOSTA
-</button>
-
-</div>
-
-
-<div class="card">
-
-<div class="card-icon">
-💼
-</div>
-
-<h2>
-Currículo
-</h2>
-
-<p>
-Monte um currículo profissional
-em poucos minutos.
-</p>
-
-<button onclick="mostrar('curriculo')">
-CRIAR CURRÍCULO
-</button>
-
-</div>
-
-
-<div class="card">
-
-<div class="card-icon">
-🧾
-</div>
-
-<h2>
-Orçamento
-</h2>
-
-<p>
-Calcule materiais, mão de obra,
-descontos e total.
-</p>
-
-<button onclick="mostrar('orcamento')">
-CRIAR ORÇAMENTO
-</button>
-
-</div>
-
-
-<div class="card">
-
-<div class="card-icon">
-📝
-</div>
-
-<h2>
-Contrato
-</h2>
-
-<p>
-Crie um modelo de contrato
-de prestação de serviços.
-</p>
-
-<button onclick="mostrar('contrato')">
-CRIAR CONTRATO
-</button>
-
-</div>
-
-
-<div class="card">
-
-<div class="card-icon">
-📱
-</div>
-
-<h2>
-WhatsApp
-</h2>
-
-<p>
-Tenha mensagens profissionais
-prontas para seus clientes.
-</p>
-
-<button onclick="mostrar('whatsapp')">
-VER MENSAGENS
-</button>
-
-</div>
-
-
-<div class="card">
-
-<div class="card-icon">
-👤
-</div>
-
-<h2>
-Meu Perfil
-</h2>
-
-<p>
-Crie sua apresentação profissional
-para compartilhar com clientes.
-</p>
-
-<button onclick="mostrar('perfil')">
-CRIAR PERFIL
-</button>
-
-</div>
-
-
-<div class="card">
-
-<div class="card-icon">
-💳
-</div>
-
-<h2>
-Cartão Digital
-</h2>
-
-<p>
-Transforme seu perfil em um
-cartão profissional online.
-</p>
-
-<button onclick="mostrar('cartao')">
-CRIAR CARTÃO
-</button>
-
-</div>
-
-
-<div class="card">
-
-<div class="card-icon">
-📚
-</div>
-
-<h2>
-Histórico
-</h2>
-
-<p>
-Veja os documentos profissionais
-gerados pelo sistema.
-</p>
-
-<button onclick="mostrar('historico')">
-VER HISTÓRICO
-</button>
-
-</div>
-
-
-</div>
-
-
-<!-- ========================================================= -->
-<!-- PROPOSTA -->
-<!-- ========================================================= -->
-
-<div
-id="proposta"
-class="formulario hidden"
->
-
-<h2>
-📄 Criar Proposta
-</h2>
-
-<form
-method="POST"
-action="/gerar-pdf"
->
-
-<label>Seu nome</label>
-
-<input
-name="prestador"
-required
-placeholder="Ex: João da Silva"
->
-
-<label>Profissão</label>
-
-<select name="profissao">
-
-{% for profissao in profissoes %}
-
-<option value="{{ profissao }}">
-{{ profissao }}
-</option>
-
+{% with messages = get_flashed_messages() %}
+{% for message in messages %}
+<div class="alert">{{ message }}</div>
 {% endfor %}
+{% endwith %}
 
-</select>
+<form method="POST">
 
-<label>Nome do cliente</label>
+<label>E-mail</label>
 
 <input
-name="cliente"
+type="email"
+name="email"
+placeholder="seu@email.com"
 required
-placeholder="Nome do cliente"
 >
 
-<label>Telefone</label>
+<label>Senha</label>
 
 <input
-name="telefone"
-placeholder="(77) 99999-9999"
->
-
-<label>Endereço</label>
-
-<input
-name="endereco"
-placeholder="Endereço do serviço"
->
-
-<label>Descrição do serviço</label>
-
-<textarea
-name="descricao"
+type="password"
+name="senha"
+placeholder="Sua senha"
 required
-placeholder="Descreva o serviço..."
-></textarea>
-
-<label>Valor</label>
-
-<input
-name="valor"
-placeholder="R$ 1.500,00"
 >
 
-<label>Desconto</label>
-
-<input
-name="desconto"
-placeholder="R$ 0,00"
->
-
-<label>Condições comerciais</label>
-
-<textarea
-name="condicoes"
-placeholder="Ex: 50% na entrada e 50% na conclusão."
-></textarea>
-
-<label>Observações</label>
-
-<textarea
-name="observacoes"
-placeholder="Informações adicionais..."
-></textarea>
-
-<button
-class="btn"
-type="submit"
->
-📄 GERAR PROPOSTA EM PDF
+<button class="btn" type="submit">
+ENTRAR
 </button>
 
 </form>
 
+<hr style="border-color:#292929;margin:25px 0">
+
+<p>
+Ainda não possui uma conta?
+</p>
+
+<a class="btn btn-secondary"
+href="{{ url_for('cadastro') }}">
+CRIAR CONTA
+</a>
+
 </div>
 
+</div>
 
-<!-- ========================================================= -->
-<!-- CURRÍCULO -->
-<!-- ========================================================= -->
+</div>
 
-<div
-id="curriculo"
-class="formulario hidden"
->
+</body>
+</html>
+"""
 
-<h2>
-💼 Criar Currículo
-</h2>
 
-<form
-method="POST"
-action="/gerar-curriculo"
->
+# ================================================================
+# PÁGINA DE CADASTRO
+# ================================================================
 
-<label>Nome completo</label>
+CADASTRO_HTML = """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+<title>Criar conta</title>
+""" + STYLE + """
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="login-box">
+
+<div class="card">
+
+<h1>Criar conta</h1>
+
+<p class="small">
+Comece gratuitamente no Proposta Exclusiva.
+</p>
+
+{% with messages = get_flashed_messages() %}
+{% for message in messages %}
+<div class="alert">{{ message }}</div>
+{% endfor %}
+{% endwith %}
+
+<form method="POST">
+
+<label>Nome</label>
 
 <input
+type="text"
 name="nome"
+placeholder="Seu nome"
 required
-placeholder="Ex: João da Silva"
->
-
-<label>Profissão / Área</label>
-
-<input
-name="profissao"
-placeholder="Ex: Eletricista"
->
-
-<label>Telefone</label>
-
-<input
-name="telefone"
-placeholder="(77) 99999-9999"
 >
 
 <label>E-mail</label>
 
 <input
-name="email"
 type="email"
-placeholder="seuemail@email.com"
->
-
-<label>Cidade / Estado</label>
-
-<input
-name="cidade"
-placeholder="Vitória da Conquista - BA"
->
-
-<label>🎯 Objetivo profissional</label>
-
-<textarea
-name="objetivo"
-placeholder="Busco uma oportunidade..."
-></textarea>
-
-<label>👤 Perfil profissional</label>
-
-<textarea
-name="resumo"
-placeholder="Conte brevemente sobre você..."
-></textarea>
-
-<label>💼 Experiência profissional</label>
-
-<textarea
-name="experiencia"
-placeholder="Empresa — Cargo — Período..."
-></textarea>
-
-<label>🎓 Formação acadêmica</label>
-
-<textarea
-name="formacao"
-placeholder="Ex: Ensino Médio Completo"
-></textarea>
-
-<label>📚 Cursos</label>
-
-<textarea
-name="cursos"
-placeholder="Digite seus cursos..."
-></textarea>
-
-<label>⭐ Habilidades</label>
-
-<textarea
-name="habilidades"
-placeholder="Comunicação, organização, informática..."
-></textarea>
-
-<label>🌎 Idiomas</label>
-
-<textarea
-name="idiomas"
-placeholder="Português — Nativo&#10;Inglês — Básico"
-></textarea>
-
-<button
-class="btn"
-type="submit"
->
-💼 GERAR CURRÍCULO EM PDF
-</button>
-
-</form>
-
-</div>
-
-
-<!-- ========================================================= -->
-<!-- ORÇAMENTO -->
-<!-- ========================================================= -->
-
-<div
-id="orcamento"
-class="formulario hidden"
->
-
-<h2>
-🧾 Criar Orçamento
-</h2>
-
-<form
-method="POST"
-action="/gerar-orcamento"
->
-
-<label>Seu nome</label>
-
-<input
-name="prestador"
-required
-placeholder="Ex: João da Silva"
->
-
-<label>Profissão</label>
-
-<select name="profissao">
-
-{% for profissao in profissoes %}
-
-<option value="{{ profissao }}">
-{{ profissao }}
-</option>
-
-{% endfor %}
-
-</select>
-
-<label>Nome do cliente</label>
-
-<input
-name="cliente"
-required
-placeholder="Nome do cliente"
->
-
-<label>Telefone</label>
-
-<input
-name="telefone"
-placeholder="(77) 99999-9999"
->
-
-<label>Endereço</label>
-
-<input
-name="endereco"
-placeholder="Endereço"
->
-
-<label>Materiais / Serviços</label>
-
-<textarea
-name="materiais"
-placeholder="Cimento | 10 | 35,00
-Tinta | 5 | 80,00
-Tomada | 4 | 15,00"
-></textarea>
-
-<div class="info">
-
-Formato:
-Descrição | Quantidade | Valor unitário
-
-</div>
-
-<label>Mão de obra</label>
-
-<input
-name="mao_obra"
-placeholder="R$ 1.000,00"
->
-
-<label>Desconto</label>
-
-<input
-name="desconto"
-placeholder="R$ 0,00"
->
-
-<label>Condições de pagamento</label>
-
-<textarea
-name="condicoes"
-placeholder="50% na entrada e restante na conclusão."
-></textarea>
-
-<label>Observações</label>
-
-<textarea
-name="observacoes"
-placeholder="Prazo, garantia..."
-></textarea>
-
-<button
-class="btn"
-type="submit"
->
-🧾 GERAR ORÇAMENTO EM PDF
-</button>
-
-</form>
-
-</div>
-
-
-<!-- ========================================================= -->
-<!-- CONTRATO -->
-<!-- ========================================================= -->
-
-<div
-id="contrato"
-class="formulario hidden"
->
-
-<h2>
-📝 Criar Contrato
-</h2>
-
-<div class="info">
-
-Modelo geral de contrato de prestação de serviços.
-Revise antes de utilizar.
-
-</div>
-
-<form
-method="POST"
-action="/gerar-contrato"
->
-
-<label>
-Nome do prestador
-</label>
-
-<input
-name="prestador"
-required
->
-
-<label>
-Telefone do prestador
-</label>
-
-<input
-name="telefone_prestador"
->
-
-<label>
-Nome do cliente
-</label>
-
-<input
-name="cliente"
-required
->
-
-<label>
-Telefone do cliente
-</label>
-
-<input
-name="telefone_cliente"
->
-
-<label>
-Endereço do cliente
-</label>
-
-<input
-name="endereco_cliente"
->
-
-<label>
-Serviço contratado
-</label>
-
-<textarea
-name="servico"
-required
-placeholder="Descreva o serviço..."
-></textarea>
-
-<label>
-Valor do contrato
-</label>
-
-<input
-name="valor"
-placeholder="R$ 2.000,00"
->
-
-<label>
-Prazo
-</label>
-
-<textarea
-name="prazo"
-placeholder="Ex: 15 dias..."
-></textarea>
-
-<label>
-Forma de pagamento
-</label>
-
-<textarea
-name="pagamento"
-placeholder="Ex: 50% na contratação..."
-></textarea>
-
-<label>
-Observações
-</label>
-
-<textarea
-name="observacoes"
-></textarea>
-
-<button
-class="btn"
-type="submit"
->
-📝 GERAR CONTRATO EM PDF
-</button>
-
-</form>
-
-</div>
-
-
-<!-- ========================================================= -->
-<!-- WHATSAPP -->
-<!-- ========================================================= -->
-
-<div
-id="whatsapp"
-class="formulario hidden"
->
-
-<h2>
-📱 Mensagens Profissionais
-</h2>
-
-<label>
-Telefone do cliente
-</label>
-
-<input
-id="numeroWhatsApp"
-placeholder="(77) 99999-9999"
->
-
-<label>
-Tipo de mensagem
-</label>
-
-<select
-id="tipoMensagem"
-onchange="selecionarMensagem()"
->
-
-<option value="primeiro">
-👋 Primeiro contato
-</option>
-
-<option value="orcamento">
-🧾 Envio de orçamento
-</option>
-
-<option value="proposta">
-📄 Envio de proposta
-</option>
-
-<option value="agendamento">
-📅 Confirmação de agendamento
-</option>
-
-<option value="pagamento">
-💰 Lembrete de pagamento
-</option>
-
-<option value="servico">
-🔧 Confirmação de serviço
-</option>
-
-<option value="posvenda">
-⭐ Pós-venda
-</option>
-
-<option value="avaliacao">
-⭐ Pedido de avaliação
-</option>
-
-<option value="personalizada">
-✍️ Personalizada
-</option>
-
-</select>
-
-<label>
-Mensagem
-</label>
-
-<textarea
-id="mensagemWhatsApp"
-></textarea>
-
-<button
-class="btn-whatsapp"
-onclick="abrirWhatsApp()"
->
-📱 ABRIR NO WHATSAPP
-</button>
-
-</div>
-
-
-<!-- ========================================================= -->
-<!-- PERFIL -->
-<!-- ========================================================= -->
-
-<div
-id="perfil"
-class="formulario hidden"
->
-
-<h2>
-👤 Criar Perfil Profissional
-</h2>
-
-<p class="info">
-Crie uma apresentação profissional que poderá
-ser compartilhada com seus clientes.
-</p>
-
-<form
-method="POST"
-action="/salvar-perfil"
->
-
-<label>
-Nome profissional
-</label>
-
-<input
-name="nome"
-required
-placeholder="Ex: João da Silva"
->
-
-<label>
-Profissão
-</label>
-
-<input
-name="profissao"
-placeholder="Ex: Eletricista"
->
-
-<label>
-Telefone
-</label>
-
-<input
-name="telefone"
-placeholder="(77) 99999-9999"
->
-
-<label>
-E-mail
-</label>
-
-<input
 name="email"
-type="email"
-placeholder="seuemail@email.com"
+placeholder="seu@email.com"
+required
 >
 
-<label>
-Cidade
-</label>
+<label>Senha</label>
 
 <input
-name="cidade"
-placeholder="Vitória da Conquista - BA"
+type="password"
+name="senha"
+placeholder="Mínimo 6 caracteres"
+required
 >
 
-<label>
-Sobre você
-</label>
-
-<textarea
-name="descricao"
-placeholder="Conte sobre seu trabalho..."
-></textarea>
-
-<label>
-Habilidades
-</label>
-
-<textarea
-name="habilidades"
-placeholder="Experiência, especialidades..."
-></textarea>
-
-<label>
-Experiência
-</label>
-
-<textarea
-name="experiencia"
-placeholder="Conte sua experiência profissional..."
-></textarea>
-
-<label>
-Serviços oferecidos
-</label>
-
-<textarea
-name="servicos"
-placeholder="Instalações, reformas, manutenção..."
-></textarea>
-
-<label>
-Instagram
-</label>
+<label>Confirmar senha</label>
 
 <input
-name="instagram"
-placeholder="@seuinstagram ou link"
+type="password"
+name="confirmar"
+placeholder="Digite novamente"
+required
 >
 
-<button
-class="btn"
-type="submit"
->
-👤 SALVAR MEU PERFIL
+<button class="btn" type="submit">
+CRIAR MINHA CONTA
 </button>
 
 </form>
 
-</div>
-
-
-<!-- ========================================================= -->
-<!-- CARTÃO DIGITAL -->
-<!-- ========================================================= -->
-
-<div
-id="cartao"
-class="formulario hidden"
->
-
-<h2>
-💳 Cartão Digital
-</h2>
-
-<p class="info">
-Seu cartão digital usa os dados do seu perfil profissional.
-Primeiro crie ou atualize seu perfil.
-</p>
-
-{% if perfil %}
-
-<div class="profile-card">
-
-<div class="profile-name">
-{{ perfil.nome }}
-</div>
-
-<div class="profile-profession">
-{{ perfil.profissao or "Profissional autônomo" }}
-</div>
-
-<p>
-{{ perfil.descricao or "Profissional disponível para novos serviços." }}
-</p>
-
-{% if perfil.telefone %}
-
-<p>
-📱 {{ perfil.telefone }}
-</p>
-
-{% endif %}
-
-{% if perfil.cidade %}
-
-<p>
-📍 {{ perfil.cidade }}
-</p>
-
-{% endif %}
-
-<a
-href="/p/{{ perfil.slug }}"
-target="_blank"
-style="color:#d4af37;"
->
-🔗 Ver página pública
+<a href="{{ url_for('login') }}">
+Já tenho uma conta
 </a>
 
 </div>
 
-<div class="link-box">
-
-{{ public_url }}
-
 </div>
 
-<button
-class="btn-perfil"
-onclick="copiarLink()"
->
-🔗 COPIAR LINK DO MEU CARTÃO
-</button>
-
-<a
-href="/p/{{ perfil.slug }}"
-target="_blank"
-style="text-decoration:none;"
->
-<button
-type="button"
-class="btn-secundario"
->
-👁️ VISUALIZAR CARTÃO
-</button>
-</a>
-
-{% else %}
-
-<p class="info">
-Você ainda não possui um perfil.
-Crie seu perfil primeiro.
-</p>
-
-<button
-onclick="mostrar('perfil')"
->
-CRIAR MEU PERFIL
-</button>
-
-{% endif %}
-
 </div>
-
-
-<!-- ========================================================= -->
-<!-- HISTÓRICO -->
-<!-- ========================================================= -->
-
-<div
-id="historico"
-class="formulario hidden"
->
-
-<h2>
-📚 Histórico de Documentos
-</h2>
-
-{% if historico %}
-
-<div class="history">
-
-<table>
-
-<tr>
-
-<th>Tipo</th>
-
-<th>Cliente</th>
-
-<th>Valor</th>
-
-<th>Data</th>
-
-</tr>
-
-{% for item in historico %}
-
-<tr>
-
-<td>
-{{ item.tipo }}
-</td>
-
-<td>
-{{ item.cliente or "-" }}
-</td>
-
-<td>
-{{ "R$ %.2f"|format(item.valor or 0) }}
-</td>
-
-<td>
-{{ item.criado_em.strftime("%d/%m/%Y %H:%M") }}
-</td>
-
-</tr>
-
-{% endfor %}
-
-</table>
-
-</div>
-
-{% else %}
-
-<p class="info">
-Nenhum documento registrado ainda.
-Depois de gerar propostas, currículos,
-orçamentos ou contratos, eles aparecerão aqui.
-</p>
-
-{% endif %}
-
-</div>
-
-
-<footer>
-
-Proposta Exclusiva © 2026
-
-<br><br>
-
-Propostas • Currículos • Orçamentos • Contratos • WhatsApp
-
-</footer>
-
-</div>
-
-
-<script>
-
-const mensagens = {
-
-    primeiro:
-    "Olá! Tudo bem? Meu nome é [SEU NOME]. Trabalho com [SEU SERVIÇO]. Gostaria de saber se posso ajudar você com seu projeto.",
-
-    orcamento:
-    "Olá! Tudo bem? Estou enviando o orçamento referente ao serviço solicitado. Qualquer dúvida, estou à disposição.",
-
-    proposta:
-    "Olá! Tudo bem? Preparei sua proposta comercial com os detalhes do serviço. Estou enviando para você analisar. Fico à disposição para qualquer dúvida.",
-
-    agendamento:
-    "Olá! Passando para confirmar nosso agendamento para [DATA] às [HORÁRIO]. Qualquer alteração, por favor me avise.",
-
-    pagamento:
-    "Olá! Tudo bem? Passando para lembrar sobre o pagamento referente ao serviço realizado. Se precisar de alguma informação, estou à disposição.",
-
-    servico:
-    "Olá! Confirmando nosso serviço para [DATA]. Estarei disponível no horário combinado. Obrigado pela confiança!",
-
-    posvenda:
-    "Olá! Tudo bem? Gostaria de saber se ficou tudo certo com o serviço realizado. Espero que tenha ficado satisfeito!",
-
-    avaliacao:
-    "Olá! Tudo bem? Se você ficou satisfeito com meu trabalho, poderia deixar uma avaliação? Sua opinião é muito importante para o meu trabalho. Muito obrigado!",
-
-    personalizada:
-    ""
-
-};
-
-
-function selecionarMensagem() {
-
-    const tipo =
-        document.getElementById(
-            "tipoMensagem"
-        ).value;
-
-    document.getElementById(
-        "mensagemWhatsApp"
-    ).value = mensagens[tipo];
-
-}
-
-
-function abrirWhatsApp() {
-
-    let numero =
-        document.getElementById(
-            "numeroWhatsApp"
-        ).value;
-
-    let mensagem =
-        document.getElementById(
-            "mensagemWhatsApp"
-        ).value;
-
-    numero =
-        numero.replace(
-            /\\D/g,
-            ""
-        );
-
-    if (
-        numero.length === 10 ||
-        numero.length === 11
-    ) {
-
-        numero = "55" + numero;
-
-    }
-
-    if (!numero) {
-
-        alert(
-            "Digite o telefone do cliente."
-        );
-
-        return;
-    }
-
-    if (!mensagem) {
-
-        alert(
-            "Digite uma mensagem."
-        );
-
-        return;
-    }
-
-    const url =
-        "https://wa.me/"
-        + numero
-        + "?text="
-        + encodeURIComponent(
-            mensagem
-        );
-
-    window.open(
-        url,
-        "_blank"
-    );
-
-}
-
-
-function mostrar(id) {
-
-    const formularios = [
-
-        "proposta",
-        "curriculo",
-        "orcamento",
-        "contrato",
-        "whatsapp",
-        "perfil",
-        "cartao",
-        "historico"
-
-    ];
-
-    formularios.forEach(
-        function(nome) {
-
-            const elemento =
-                document.getElementById(
-                    nome
-                );
-
-            if (elemento) {
-
-                elemento.classList.add(
-                    "hidden"
-                );
-
-            }
-
-        }
-    );
-
-    const destino =
-        document.getElementById(
-            id
-        );
-
-    if (destino) {
-
-        destino.classList.remove(
-            "hidden"
-        );
-
-        destino.scrollIntoView({
-            behavior: "smooth"
-        });
-
-    }
-
-}
-
-
-function copiarLink() {
-
-    const texto =
-        document.querySelector(
-            ".link-box"
-        ).innerText;
-
-    navigator.clipboard.writeText(
-        texto
-    ).then(
-        function() {
-
-            alert(
-                "Link copiado!"
-            );
-
-        }
-    );
-
-}
-
-
-selecionarMensagem();
-
-</script>
-
 
 </body>
-
 </html>
-
 """
 
 
 # ================================================================
-# ROTA PRINCIPAL
+# DASHBOARD
+# ================================================================
+
+DASHBOARD_HTML = """
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Proposta Exclusiva 7.0</title>
+
+""" + STYLE + """
+
+</head>
+
+<body>
+
+<div class="header">
+
+<div class="header-inner">
+
+<div class="logo">
+PROPOSTA EXCLUSIVA 7.0
+</div>
+
+<div>
+
+<span class="user-info">
+Olá, {{ usuario.nome }}
+</span>
+
+<a class="btn btn-secondary"
+href="{{ url_for('logout') }}">
+Sair
+</a>
+
+</div>
+
+</div>
+
+</div>
+
+
+<div class="container">
+
+{% with messages = get_flashed_messages() %}
+{% for message in messages %}
+<div class="alert">{{ message }}</div>
+{% endfor %}
+{% endwith %}
+
+
+<h1>Painel</h1>
+
+<p>
+Gerencie seu trabalho em um só lugar.
+</p>
+
+
+<div class="grid">
+
+<div class="card">
+<div class="small">Clientes</div>
+<div class="stat">{{ total_clientes }}</div>
+</div>
+
+<div class="card">
+<div class="small">Serviços</div>
+<div class="stat">{{ total_servicos }}</div>
+</div>
+
+<div class="card">
+<div class="small">Documentos</div>
+<div class="stat">{{ total_documentos }}</div>
+</div>
+
+<div class="card">
+<div class="small">Saldo</div>
+<div class="stat">{{ saldo }}</div>
+</div>
+
+</div>
+
+
+<h2>Ferramentas</h2>
+
+<div class="grid">
+
+<div class="menu-card">
+<h3>👥 Clientes</h3>
+<p>Cadastre e organize seus clientes.</p>
+<a class="btn"
+href="{{ url_for('clientes') }}">
+Abrir
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>📄 Proposta</h3>
+<p>Crie uma proposta profissional em PDF.</p>
+<a class="btn"
+href="{{ url_for('proposta') }}">
+Criar
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>🧾 Orçamento</h3>
+<p>Monte orçamentos com materiais e serviços.</p>
+<a class="btn"
+href="{{ url_for('orcamento') }}">
+Criar
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>📝 Contrato</h3>
+<p>Gere um modelo de contrato.</p>
+<a class="btn"
+href="{{ url_for('contrato') }}">
+Criar
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>💼 Currículo</h3>
+<p>Crie um currículo profissional.</p>
+<a class="btn"
+href="{{ url_for('curriculo') }}">
+Criar
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>📱 WhatsApp</h3>
+<p>Gere mensagens profissionais.</p>
+<a class="btn"
+href="{{ url_for('whatsapp') }}">
+Abrir
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>🧾 Recibo</h3>
+<p>Gere recibos em PDF.</p>
+<a class="btn"
+href="{{ url_for('recibo') }}">
+Criar
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>📅 Agenda</h3>
+<p>Organize seus serviços.</p>
+<a class="btn"
+href="{{ url_for('agenda') }}">
+Abrir
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>💰 Financeiro</h3>
+<p>Controle entradas e saídas.</p>
+<a class="btn"
+href="{{ url_for('financeiro') }}">
+Abrir
+</a>
+</div>
+
+
+<div class="menu-card">
+<h3>📊 Histórico</h3>
+<p>Veja os documentos criados.</p>
+<a class="btn"
+href="{{ url_for('historico') }}">
+Abrir
+</a>
+</div>
+
+</div>
+
+</div>
+
+</body>
+</html>
+"""
+
+
+# ================================================================
+# LOGIN
+# ================================================================
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+
+    if session.get("usuario_id"):
+        return redirect(url_for("home"))
+
+    if request.method == "POST":
+
+        email = request.form.get(
+            "email",
+            ""
+        ).strip().lower()
+
+        senha = request.form.get(
+            "senha",
+            ""
+        )
+
+        usuario = Usuario.query.filter_by(
+            email=email
+        ).first()
+
+        if not usuario or not check_password_hash(
+            usuario.senha,
+            senha
+        ):
+            flash("E-mail ou senha incorretos.")
+            return redirect(url_for("login"))
+
+        session.clear()
+
+        session["usuario_id"] = usuario.id
+
+        return redirect(url_for("home"))
+
+    return render_template_string(
+        LOGIN_HTML
+    )
+
+
+# ================================================================
+# CADASTRO
+# ================================================================
+
+@app.route("/cadastro", methods=["GET", "POST"])
+def cadastro():
+
+    if session.get("usuario_id"):
+        return redirect(url_for("home"))
+
+    if request.method == "POST":
+
+        nome = request.form.get(
+            "nome",
+            ""
+        ).strip()
+
+        email = request.form.get(
+            "email",
+            ""
+        ).strip().lower()
+
+        senha = request.form.get(
+            "senha",
+            ""
+        )
+
+        confirmar = request.form.get(
+            "confirmar",
+            ""
+        )
+
+        if not nome or not email or not senha:
+            flash("Preencha todos os campos.")
+            return redirect(url_for("cadastro"))
+
+        if len(senha) < 6:
+            flash("A senha deve ter pelo menos 6 caracteres.")
+            return redirect(url_for("cadastro"))
+
+        if senha != confirmar:
+            flash("As senhas não são iguais.")
+            return redirect(url_for("cadastro"))
+
+        existente = Usuario.query.filter_by(
+            email=email
+        ).first()
+
+        if existente:
+            flash("Este e-mail já está cadastrado.")
+            return redirect(url_for("login"))
+
+        usuario = Usuario(
+            nome=nome,
+            email=email,
+            senha=generate_password_hash(senha)
+        )
+
+        db.session.add(usuario)
+        db.session.commit()
+
+        session.clear()
+
+        session["usuario_id"] = usuario.id
+
+        flash("Conta criada com sucesso!")
+
+        return redirect(url_for("home"))
+
+    return render_template_string(
+        CADASTRO_HTML
+    )
+
+
+# ================================================================
+# LOGOUT
+# ================================================================
+
+@app.route("/logout")
+def logout():
+
+    session.clear()
+
+    return redirect(
+        url_for("login")
+    )
+
+
+# ================================================================
+# HOME
 # ================================================================
 
 @app.route("/")
 def home():
 
-    perfil = UserProfile.query.first()
+    if not session.get("usuario_id"):
+        return redirect(url_for("login"))
 
-    historico = DocumentHistory.query.order_by(
-        DocumentHistory.criado_em.desc()
-    ).limit(50).all()
+    usuario = usuario_atual()
 
-    public_url = ""
+    clientes = Cliente.query.filter_by(
+        usuario_id=usuario.id
+    ).count()
 
-    if perfil:
+    servicos = Servico.query.filter_by(
+        usuario_id=usuario.id
+    ).count()
 
-        public_url = request.host_url.rstrip(
-            "/"
-        ) + "/p/" + perfil.slug
+    documentos = Documento.query.filter_by(
+        usuario_id=usuario.id
+    ).count()
+
+    entradas = db.session.query(
+        db.func.sum(Movimento.valor)
+    ).filter(
+        Movimento.usuario_id == usuario.id,
+        Movimento.tipo == "entrada"
+    ).scalar() or 0
+
+    saidas = db.session.query(
+        db.func.sum(Movimento.valor)
+    ).filter(
+        Movimento.usuario_id == usuario.id,
+        Movimento.tipo == "saida"
+    ).scalar() or 0
+
+    saldo = brl(
+        float(entradas) - float(saidas)
+    )
 
     return render_template_string(
+        DASHBOARD_HTML,
+        usuario=usuario,
+        total_clientes=clientes,
+        total_servicos=servicos,
+        total_documentos=documentos,
+        saldo=saldo
+    )
 
-        HTML,
 
-        profissoes=PROFISSOES,
+# ================================================================
+# CLIENTES
+# ================================================================
 
-        perfil=perfil,
+@app.route("/clientes")
+@login_required
+def clientes():
 
-        historico=historico,
+    lista = Cliente.query.filter_by(
+        usuario_id=session["usuario_id"]
+    ).order_by(
+        Cliente.id.desc()
+    ).all()
 
-        public_url=public_url
+    html = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+    <title>Clientes</title>
+    """ + STYLE + """
+    </head>
 
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>👥 Clientes</h1>
+
+    <div class="card">
+
+    <h2>Novo cliente</h2>
+
+    <form method="POST"
+    action="/cliente/adicionar">
+
+    <label>Nome</label>
+    <input name="nome" required>
+
+    <label>Telefone</label>
+    <input name="telefone">
+
+    <label>E-mail</label>
+    <input type="email" name="email">
+
+    <label>Endereço</label>
+    <input name="endereco">
+
+    <label>Observações</label>
+    <textarea name="observacoes"></textarea>
+
+    <button class="btn">
+    SALVAR CLIENTE
+    </button>
+
+    </form>
+
+    </div>
+
+
+    <div class="card">
+
+    <h2>Meus clientes</h2>
+
+    {% if lista %}
+
+    <table>
+
+    <tr>
+    <th>Nome</th>
+    <th>Telefone</th>
+    <th>Ações</th>
+    </tr>
+
+    {% for cliente in lista %}
+
+    <tr>
+
+    <td>{{ cliente.nome }}</td>
+
+    <td>{{ cliente.telefone or "-" }}</td>
+
+    <td>
+
+    <a class="btn btn-danger"
+    href="/cliente/excluir/{{ cliente.id }}"
+    onclick="return confirm('Excluir cliente?')">
+    Excluir
+    </a>
+
+    </td>
+
+    </tr>
+
+    {% endfor %}
+
+    </table>
+
+    {% else %}
+
+    <p>Nenhum cliente cadastrado.</p>
+
+    {% endif %}
+
+    </div>
+
+    </div>
+
+    </body>
+    </html>
+    """
+
+    return render_template_string(
+        html,
+        lista=lista
+    )
+
+
+@app.route(
+    "/cliente/adicionar",
+    methods=["POST"]
+)
+@login_required
+def adicionar_cliente():
+
+    cliente = Cliente(
+        usuario_id=session["usuario_id"],
+        nome=request.form.get(
+            "nome",
+            ""
+        ).strip(),
+        telefone=request.form.get(
+            "telefone",
+            ""
+        ).strip(),
+        email=request.form.get(
+            "email",
+            ""
+        ).strip(),
+        endereco=request.form.get(
+            "endereco",
+            ""
+        ).strip(),
+        observacoes=request.form.get(
+            "observacoes",
+            ""
+        ).strip()
+    )
+
+    if not cliente.nome:
+        flash("Informe o nome do cliente.")
+        return redirect(url_for("clientes"))
+
+    db.session.add(cliente)
+    db.session.commit()
+
+    flash("Cliente cadastrado!")
+
+    return redirect(
+        url_for("clientes")
+    )
+
+
+@app.route(
+    "/cliente/excluir/<int:id>"
+)
+@login_required
+def excluir_cliente(id):
+
+    cliente = Cliente.query.filter_by(
+        id=id,
+        usuario_id=session["usuario_id"]
+    ).first()
+
+    if cliente:
+
+        db.session.delete(cliente)
+
+        db.session.commit()
+
+        flash("Cliente excluído.")
+
+    return redirect(
+        url_for("clientes")
     )
 
 
@@ -3628,234 +1401,220 @@ def home():
 # PROPOSTA
 # ================================================================
 
-@app.route(
-    "/gerar-pdf",
-    methods=["POST"]
-)
-def gerar_pdf():
+@app.route("/proposta", methods=["GET", "POST"])
+@login_required
+def proposta():
 
-    dados = {
+    clientes = Cliente.query.filter_by(
+        usuario_id=session["usuario_id"]
+    ).all()
 
-        "prestador":
-        request.form.get(
-            "prestador",
-            ""
-        ),
+    if request.method == "POST":
 
-        "profissao":
-        request.form.get(
-            "profissao",
-            ""
-        ),
+        usuario = usuario_atual()
 
-        "cliente":
-        request.form.get(
+        cliente_nome = request.form.get(
             "cliente",
             ""
-        ),
+        )
 
-        "telefone":
-        request.form.get(
-            "telefone",
+        servico = request.form.get(
+            "servico",
             ""
-        ),
+        )
 
-        "endereco":
-        request.form.get(
-            "endereco",
-            ""
-        ),
-
-        "descricao":
-        request.form.get(
+        descricao = request.form.get(
             "descricao",
             ""
-        ),
+        )
 
-        "valor":
-        request.form.get(
-            "valor",
-            ""
-        ),
+        valor = dinheiro(
+            request.form.get("valor")
+        )
 
-        "desconto":
-        request.form.get(
-            "desconto",
-            ""
-        ),
-
-        "condicoes":
-        request.form.get(
-            "condicoes",
-            ""
-        ),
-
-        "observacoes":
-        request.form.get(
-            "observacoes",
+        validade = request.form.get(
+            "validade",
             ""
         )
 
-    }
-
-    valor = dinheiro(
-        dados["valor"]
-    )
-
-    desconto = dinheiro(
-        dados["desconto"]
-    )
-
-    total = max(
-        valor - desconto,
-        0
-    )
-
-    registrar_documento(
-
-        "Proposta",
-
-        dados["cliente"],
-
-        dados["descricao"],
-
-        total
-
-    )
-
-    arquivo = criar_pdf_proposta(
-        dados
-    )
-
-    return send_file(
-
-        arquivo,
-
-        as_attachment=True,
-
-        download_name=
-        "proposta-profissional.pdf",
-
-        mimetype=
-        "application/pdf"
-
-    )
-
-
-# ================================================================
-# CURRÍCULO
-# ================================================================
-
-@app.route(
-    "/gerar-curriculo",
-    methods=["POST"]
-)
-def gerar_curriculo():
-
-    dados = {
-
-        "nome":
-        request.form.get(
-            "nome",
-            ""
-        ),
-
-        "profissao":
-        request.form.get(
-            "profissao",
-            ""
-        ),
-
-        "telefone":
-        request.form.get(
-            "telefone",
-            ""
-        ),
-
-        "email":
-        request.form.get(
-            "email",
-            ""
-        ),
-
-        "cidade":
-        request.form.get(
-            "cidade",
-            ""
-        ),
-
-        "objetivo":
-        request.form.get(
-            "objetivo",
-            ""
-        ),
-
-        "resumo":
-        request.form.get(
-            "resumo",
-            ""
-        ),
-
-        "experiencia":
-        request.form.get(
-            "experiencia",
-            ""
-        ),
-
-        "formacao":
-        request.form.get(
-            "formacao",
-            ""
-        ),
-
-        "cursos":
-        request.form.get(
-            "cursos",
-            ""
-        ),
-
-        "habilidades":
-        request.form.get(
-            "habilidades",
-            ""
-        ),
-
-        "idiomas":
-        request.form.get(
-            "idiomas",
-            ""
+        caminho, doc, titulo_style, normal = gerar_pdf_base(
+            "proposta.pdf",
+            "Proposta Comercial"
         )
 
-    }
+        elementos = []
 
-    registrar_documento(
+        elementos.append(
+            Paragraph(
+                "PROPOSTA COMERCIAL",
+                titulo_style
+            )
+        )
 
-        "Currículo",
+        elementos.append(
+            Paragraph(
+                f"<b>Profissional:</b> {escape_pdf(usuario.nome)}",
+                normal
+            )
+        )
 
-        dados["nome"],
+        elementos.append(
+            Paragraph(
+                f"<b>Cliente:</b> {escape_pdf(cliente_nome)}",
+                normal
+            )
+        )
 
-        dados["profissao"],
+        elementos.append(Spacer(1, 12))
 
-        0
+        elementos.append(
+            Paragraph(
+                f"<b>Serviço:</b> {escape_pdf(servico)}",
+                normal
+            )
+        )
 
-    )
+        elementos.append(
+            Paragraph(
+                f"<b>Descrição:</b> {escape_pdf(descricao)}",
+                normal
+            )
+        )
 
-    arquivo = criar_pdf_curriculo(
-        dados
-    )
+        elementos.append(Spacer(1, 12))
 
-    return send_file(
+        tabela = Table([
+            ["Valor", "Validade"],
+            [brl(valor), validade or "A combinar"]
+        ], colWidths=[8 * cm, 8 * cm])
 
-        arquivo,
+        tabela.setStyle(
+            TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#222222")),
+                ("TEXTCOLOR", (0,0), (-1,0), colors.HexColor("#D4AF37")),
+                ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+                ("PADDING", (0,0), (-1,-1), 8)
+            ])
+        )
 
-        as_attachment=True,
+        elementos.append(tabela)
 
-        download_name=
-        "curriculo-profissional.pdf",
+        elementos.append(Spacer(1, 20))
 
-        mimetype=
-        "application/pdf"
+        elementos.append(
+            Paragraph(
+                "Obrigado pela oportunidade. "
+                "Fico à disposição para esclarecer qualquer dúvida.",
+                normal
+            )
+        )
 
+        doc.build(elementos)
+
+        registrar_documento(
+            "Proposta",
+            cliente_nome,
+            servico
+        )
+
+        return send_file(
+            caminho,
+            as_attachment=True,
+            download_name="proposta.pdf"
+        )
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+    <title>Proposta</title>
+    """ + STYLE + """
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>📄 Criar proposta</h1>
+
+    <div class="card">
+
+    <form method="POST">
+
+    <label>Cliente</label>
+
+    <select name="cliente">
+
+    <option value="">
+Digite o nome abaixo ou escolha um cliente
+    </option>
+
+    {% for cliente in clientes %}
+
+    <option value="{{ cliente.nome }}">
+    {{ cliente.nome }}
+    </option>
+
+    {% endfor %}
+
+    </select>
+
+    <input
+    name="cliente"
+    placeholder="Nome do cliente"
+    >
+
+    <label>Serviço</label>
+
+    <input
+    name="servico"
+    placeholder="Ex: Pintura residencial"
+    required
+    >
+
+    <label>Descrição</label>
+
+    <textarea
+    name="descricao"
+    placeholder="Descreva o serviço..."
+    ></textarea>
+
+    <label>Valor</label>
+
+    <input
+    name="valor"
+    placeholder="Ex: 1500,00"
+    >
+
+    <label>Validade da proposta</label>
+
+    <input
+    name="validade"
+    placeholder="Ex: 7 dias"
+    >
+
+    <button class="btn">
+    GERAR PDF
+    </button>
+
+    </form>
+
+    </div>
+
+    </div>
+
+    </body>
+    </html>
+    """
+
+    return render_template_string(
+        html,
+        clientes=clientes
     )
 
 
@@ -3863,140 +1622,218 @@ def gerar_curriculo():
 # ORÇAMENTO
 # ================================================================
 
-@app.route(
-    "/gerar-orcamento",
-    methods=["POST"]
-)
-def gerar_orcamento():
+@app.route("/orcamento", methods=["GET", "POST"])
+@login_required
+def orcamento():
 
-    dados = {
+    if request.method == "POST":
 
-        "prestador":
-        request.form.get(
-            "prestador",
-            ""
-        ),
+        usuario = usuario_atual()
 
-        "profissao":
-        request.form.get(
-            "profissao",
-            ""
-        ),
-
-        "cliente":
-        request.form.get(
+        cliente = request.form.get(
             "cliente",
             ""
-        ),
+        )
 
-        "telefone":
-        request.form.get(
-            "telefone",
-            ""
-        ),
-
-        "endereco":
-        request.form.get(
-            "endereco",
-            ""
-        ),
-
-        "materiais":
-        request.form.get(
+        linhas = request.form.get(
             "materiais",
             ""
-        ),
+        )
 
-        "mao_obra":
-        request.form.get(
-            "mao_obra",
-            ""
-        ),
-
-        "desconto":
-        request.form.get(
-            "desconto",
-            ""
-        ),
-
-        "condicoes":
-        request.form.get(
-            "condicoes",
-            ""
-        ),
-
-        "observacoes":
-        request.form.get(
+        observacoes = request.form.get(
             "observacoes",
             ""
         )
 
-    }
+        total = 0
 
-    total_materiais = 0.0
+        tabela_dados = [
+            ["Item", "Qtd.", "Unitário", "Total"]
+        ]
 
-    for linha in dados["materiais"].splitlines():
+        for linha in linhas.splitlines():
 
-        partes = linha.split("|")
+            partes = [
+                x.strip()
+                for x in linha.split("|")
+            ]
 
-        if len(partes) >= 3:
+            if len(partes) != 3:
+                continue
 
-            quantidade = dinheiro(
-                partes[1]
-            )
+            descricao = partes[0]
 
-            valor_unitario = dinheiro(
+            try:
+                quantidade = float(
+                    partes[1].replace(",", ".")
+                )
+            except:
+                quantidade = 0
+
+            preco = dinheiro(
                 partes[2]
             )
 
-            total_materiais += (
-                quantidade *
-                valor_unitario
+            subtotal = quantidade * preco
+
+            total += subtotal
+
+            tabela_dados.append([
+                descricao,
+                str(quantidade),
+                brl(preco),
+                brl(subtotal)
+            ])
+
+        caminho, doc, titulo_style, normal = gerar_pdf_base(
+            "orcamento.pdf",
+            "Orçamento"
+        )
+
+        elementos = []
+
+        elementos.append(
+            Paragraph(
+                "ORÇAMENTO",
+                titulo_style
             )
+        )
 
-    mao_obra = dinheiro(
-        dados["mao_obra"]
-    )
+        elementos.append(
+            Paragraph(
+                f"<b>Profissional:</b> {escape_pdf(usuario.nome)}",
+                normal
+            )
+        )
 
-    desconto = dinheiro(
-        dados["desconto"]
-    )
+        elementos.append(
+            Paragraph(
+                f"<b>Cliente:</b> {escape_pdf(cliente)}",
+                normal
+            )
+        )
 
-    total = max(
-        total_materiais
-        + mao_obra
-        - desconto,
-        0
-    )
+        elementos.append(Spacer(1, 15))
 
-    registrar_documento(
+        tabela = Table(
+            tabela_dados,
+            colWidths=[
+                7 * cm,
+                2 * cm,
+                3.5 * cm,
+                3.5 * cm
+            ]
+        )
 
-        "Orçamento",
+        tabela.setStyle(
+            TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#222222")),
+                ("TEXTCOLOR", (0,0), (-1,0), colors.HexColor("#D4AF37")),
+                ("GRID", (0,0), (-1,-1), .5, colors.grey),
+                ("PADDING", (0,0), (-1,-1), 6)
+            ])
+        )
 
-        dados["cliente"],
+        elementos.append(tabela)
 
-        dados["observacoes"],
+        elementos.append(Spacer(1, 15))
 
-        total
+        elementos.append(
+            Paragraph(
+                f"<b>TOTAL: {brl(total)}</b>",
+                normal
+            )
+        )
 
-    )
+        elementos.append(
+            Paragraph(
+                escape_pdf(observacoes),
+                normal
+            )
+        )
 
-    arquivo = criar_pdf_orcamento(
-        dados
-    )
+        doc.build(elementos)
 
-    return send_file(
+        registrar_documento(
+            "Orçamento",
+            cliente,
+            f"Orçamento - {brl(total)}"
+        )
 
-        arquivo,
+        return send_file(
+            caminho,
+            as_attachment=True,
+            download_name="orcamento.pdf"
+        )
 
-        as_attachment=True,
+    html = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+    <title>Orçamento</title>
+    """ + STYLE + """
+    </head>
 
-        download_name=
-        "orcamento-profissional.pdf",
+    <body>
 
-        mimetype=
-        "application/pdf"
+    <div class="container">
 
+    <a href="/">← Painel</a>
+
+    <h1>🧾 Criar orçamento</h1>
+
+    <div class="card">
+
+    <form method="POST">
+
+    <label>Cliente</label>
+
+    <input
+    name="cliente"
+    placeholder="Nome do cliente"
+    required
+    >
+
+    <label>Materiais / serviços</label>
+
+    <p class="small">
+    Use uma linha para cada item:<br>
+    Cimento | 10 | 35,00<br>
+    Tinta | 5 | 80,00
+    </p>
+
+    <textarea
+    name="materiais"
+    placeholder="Cimento | 10 | 35,00
+Tinta | 5 | 80,00"
+    required
+    ></textarea>
+
+    <label>Observações</label>
+
+    <textarea
+    name="observacoes"
+    ></textarea>
+
+    <button class="btn">
+    GERAR ORÇAMENTO PDF
+    </button>
+
+    </form>
+
+    </div>
+
+    </div>
+
+    </body>
+    </html>
+    """
+
+    return render_template_string(
+        html
     )
 
 
@@ -4004,536 +1841,369 @@ def gerar_orcamento():
 # CONTRATO
 # ================================================================
 
-@app.route(
-    "/gerar-contrato",
-    methods=["POST"]
-)
-def gerar_contrato():
+@app.route("/contrato", methods=["GET", "POST"])
+@login_required
+def contrato():
 
-    dados = {
+    if request.method == "POST":
 
-        "prestador":
-        request.form.get(
-            "prestador",
-            ""
-        ),
+        usuario = usuario_atual()
 
-        "telefone_prestador":
-        request.form.get(
-            "telefone_prestador",
-            ""
-        ),
-
-        "cliente":
-        request.form.get(
+        cliente = request.form.get(
             "cliente",
             ""
-        ),
+        )
 
-        "telefone_cliente":
-        request.form.get(
-            "telefone_cliente",
-            ""
-        ),
-
-        "endereco_cliente":
-        request.form.get(
-            "endereco_cliente",
-            ""
-        ),
-
-        "servico":
-        request.form.get(
+        servico = request.form.get(
             "servico",
             ""
-        ),
+        )
 
-        "valor":
-        request.form.get(
-            "valor",
-            ""
-        ),
+        valor = dinheiro(
+            request.form.get("valor")
+        )
 
-        "prazo":
-        request.form.get(
+        prazo = request.form.get(
             "prazo",
             ""
-        ),
+        )
 
-        "pagamento":
-        request.form.get(
+        forma_pagamento = request.form.get(
             "pagamento",
             ""
-        ),
+        )
 
-        "observacoes":
-        request.form.get(
-            "observacoes",
+        caminho, doc, titulo_style, normal = gerar_pdf_base(
+            "contrato.pdf",
+            "Contrato"
+        )
+
+        elementos = []
+
+        elementos.append(
+            Paragraph(
+                "CONTRATO DE PRESTAÇÃO DE SERVIÇOS",
+                titulo_style
+            )
+        )
+
+        texto = f"""
+        <b>CONTRATANTE:</b> {escape_pdf(cliente)}<br/><br/>
+
+        <b>CONTRATADO:</b> {escape_pdf(usuario.nome)}<br/><br/>
+
+        <b>SERVIÇO:</b> {escape_pdf(servico)}<br/><br/>
+
+        <b>VALOR:</b> {brl(valor)}<br/><br/>
+
+        <b>PRAZO:</b> {escape_pdf(prazo)}<br/><br/>
+
+        <b>FORMA DE PAGAMENTO:</b>
+        {escape_pdf(forma_pagamento)}<br/><br/>
+
+        As partes concordam com a prestação do serviço
+        descrito acima, observando as condições acordadas.
+        """
+
+        elementos.append(
+            Paragraph(
+                texto,
+                normal
+            )
+        )
+
+        elementos.append(Spacer(1, 20))
+
+        elementos.append(
+            Paragraph(
+                "Este é um modelo geral e não substitui "
+                "orientação jurídica profissional.",
+                normal
+            )
+        )
+
+        elementos.append(Spacer(1, 50))
+
+        elementos.append(
+            Paragraph(
+                "__________________________________<br/>"
+                + escape_pdf(usuario.nome),
+                normal
+            )
+        )
+
+        elementos.append(Spacer(1, 30))
+
+        elementos.append(
+            Paragraph(
+                "__________________________________<br/>"
+                + escape_pdf(cliente),
+                normal
+            )
+        )
+
+        doc.build(elementos)
+
+        registrar_documento(
+            "Contrato",
+            cliente,
+            servico
+        )
+
+        return send_file(
+            caminho,
+            as_attachment=True,
+            download_name="contrato.pdf"
+        )
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+    <title>Contrato</title>
+    """ + STYLE + """
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>📝 Contrato</h1>
+
+    <div class="card">
+
+    <form method="POST">
+
+    <label>Cliente</label>
+    <input name="cliente" required>
+
+    <label>Serviço</label>
+    <textarea name="servico" required></textarea>
+
+    <label>Valor</label>
+    <input name="valor" placeholder="Ex: 1500,00">
+
+    <label>Prazo</label>
+    <input name="prazo" placeholder="Ex: 15 dias">
+
+    <label>Forma de pagamento</label>
+    <input
+    name="pagamento"
+    placeholder="Ex: 50% entrada e 50% conclusão"
+    >
+
+    <button class="btn">
+    GERAR CONTRATO PDF
+    </button>
+
+    </form>
+
+    </div>
+
+    </div>
+
+    </body>
+    </html>
+    """
+
+    return render_template_string(
+        html
+    )
+
+
+# ================================================================
+# CURRÍCULO
+# ================================================================
+
+@app.route("/curriculo", methods=["GET", "POST"])
+@login_required
+def curriculo():
+
+    if request.method == "POST":
+
+        usuario = usuario_atual()
+
+        nome = request.form.get(
+            "nome",
+            usuario.nome
+        )
+
+        profissao = request.form.get(
+            "profissao",
             ""
         )
 
-    }
-
-    valor = dinheiro(
-        dados["valor"]
-    )
-
-    registrar_documento(
-
-        "Contrato",
-
-        dados["cliente"],
-
-        dados["servico"],
-
-        valor
-
-    )
-
-    arquivo = criar_pdf_contrato(
-        dados
-    )
-
-    return send_file(
-
-        arquivo,
-
-        as_attachment=True,
-
-        download_name=
-        "contrato-prestacao-servicos.pdf",
-
-        mimetype=
-        "application/pdf"
-
-    )
-
-
-# ================================================================
-# SALVAR PERFIL
-# ================================================================
-
-@app.route(
-    "/salvar-perfil",
-    methods=["POST"]
-)
-def salvar_perfil():
-
-    nome = request.form.get(
-        "nome",
-        ""
-    ).strip()
-
-    if not nome:
-
-        return redirect(
-            url_for("home")
+        telefone = request.form.get(
+            "telefone",
+            ""
         )
 
-    perfil = UserProfile.query.first()
-
-    if perfil is None:
-
-        perfil = UserProfile(
-
-            slug=criar_slug(nome),
-
-            nome=nome
-
+        email = request.form.get(
+            "email",
+            usuario.email
         )
 
-        db.session.add(
-            perfil
+        experiencia = request.form.get(
+            "experiencia",
+            ""
         )
 
-    perfil.nome = nome
-
-    perfil.profissao = request.form.get(
-        "profissao",
-        ""
-    )
-
-    perfil.telefone = request.form.get(
-        "telefone",
-        ""
-    )
-
-    perfil.email = request.form.get(
-        "email",
-        ""
-    )
-
-    perfil.cidade = request.form.get(
-        "cidade",
-        ""
-    )
-
-    perfil.descricao = request.form.get(
-        "descricao",
-        ""
-    )
-
-    perfil.habilidades = request.form.get(
-        "habilidades",
-        ""
-    )
-
-    perfil.experiencia = request.form.get(
-        "experiencia",
-        ""
-    )
-
-    perfil.servicos = request.form.get(
-        "servicos",
-        ""
-    )
-
-    perfil.instagram = request.form.get(
-        "instagram",
-        ""
-    )
-
-    db.session.commit()
-
-    return redirect(
-        url_for("home")
-        + "#cartao"
-    )
-
-
-# ================================================================
-# PÁGINA PROFISSIONAL PÚBLICA
-# ================================================================
-
-@app.route(
-    "/p/<slug>"
-)
-def pagina_publica(slug):
-
-    perfil = UserProfile.query.filter_by(
-        slug=slug
-    ).first_or_404()
-
-    whatsapp = telefone_whatsapp(
-        perfil.telefone
-    )
-
-    mensagem = quote(
-        "Olá! Vi seu perfil profissional e gostaria de saber mais sobre seus serviços."
-    )
-
-    whatsapp_url = ""
-
-    if whatsapp:
-
-        whatsapp_url = (
-            "https://wa.me/"
-            + whatsapp
-            + "?text="
-            + mensagem
+        habilidades = request.form.get(
+            "habilidades",
+            ""
         )
+
+        formacao = request.form.get(
+            "formacao",
+            ""
+        )
+
+        objetivo = request.form.get(
+            "objetivo",
+            ""
+        )
+
+        caminho, doc, titulo_style, normal = gerar_pdf_base(
+            "curriculo.pdf",
+            "Currículo"
+        )
+
+        elementos = []
+
+        elementos.append(
+            Paragraph(
+                escape_pdf(nome),
+                titulo_style
+            )
+        )
+
+        elementos.append(
+            Paragraph(
+                f"<b>{escape_pdf(profissao)}</b>",
+                normal
+            )
+        )
+
+        elementos.append(
+            Paragraph(
+                f"Telefone: {escape_pdf(telefone)}<br/>"
+                f"E-mail: {escape_pdf(email)}",
+                normal
+            )
+        )
+
+        elementos.append(Spacer(1, 18))
+
+        secoes = [
+            ("OBJETIVO PROFISSIONAL", objetivo),
+            ("EXPERIÊNCIA", experiencia),
+            ("FORMAÇÃO", formacao),
+            ("HABILIDADES", habilidades)
+        ]
+
+        for titulo, texto in secoes:
+
+            elementos.append(
+                Paragraph(
+                    f"<b>{titulo}</b>",
+                    normal
+                )
+            )
+
+            elementos.append(
+                Paragraph(
+                    escape_pdf(texto),
+                    normal
+                )
+            )
+
+            elementos.append(
+                Spacer(1, 12)
+            )
+
+        doc.build(elementos)
+
+        registrar_documento(
+            "Currículo",
+            "",
+            nome
+        )
+
+        return send_file(
+            caminho,
+            as_attachment=True,
+            download_name="curriculo.pdf"
+        )
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+    <title>Currículo</title>
+    """ + STYLE + """
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>💼 Currículo</h1>
+
+    <div class="card">
+
+    <form method="POST">
+
+    <label>Nome</label>
+    <input name="nome" value="{{ usuario.nome }}" required>
+
+    <label>Profissão</label>
+    <input name="profissao">
+
+    <label>Telefone</label>
+    <input name="telefone">
+
+    <label>E-mail</label>
+    <input name="email" value="{{ usuario.email }}">
+
+    <label>Objetivo profissional</label>
+    <textarea name="objetivo"></textarea>
+
+    <label>Experiência</label>
+    <textarea name="experiencia"></textarea>
+
+    <label>Formação</label>
+    <textarea name="formacao"></textarea>
+
+    <label>Habilidades</label>
+    <textarea name="habilidades"></textarea>
+
+    <button class="btn">
+    GERAR CURRÍCULO PDF
+    </button>
+
+    </form>
+
+    </div>
+
+    </div>
+
+    </body>
+    </html>
+    """
 
     return render_template_string(
-        """
-
-<!DOCTYPE html>
-
-<html lang="pt-BR">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta
-name="viewport"
-content="width=device-width, initial-scale=1.0"
->
-
-<title>
-{{ perfil.nome }} - Perfil Profissional
-</title>
-
-<style>
-
-body {
-
-    margin: 0;
-
-    background: #080808;
-
-    color: white;
-
-    font-family: Arial, sans-serif;
-
-}
-
-.box {
-
-    width: 90%;
-
-    max-width: 650px;
-
-    margin: 40px auto;
-
-}
-
-.card {
-
-    background: #111;
-
-    border:
-        1px solid
-        #292929;
-
-    border-radius: 22px;
-
-    padding: 30px;
-
-    text-align: center;
-
-}
-
-.nome {
-
-    color: #d4af37;
-
-    font-size: 32px;
-
-    font-weight: bold;
-
-}
-
-.profissao {
-
-    color: #ddd;
-
-    font-size: 19px;
-
-    margin-top: 8px;
-
-}
-
-.secao {
-
-    text-align: left;
-
-    margin-top: 25px;
-
-    border-top:
-        1px solid
-        #292929;
-
-    padding-top: 20px;
-
-}
-
-.secao h3 {
-
-    color: #d4af37;
-
-}
-
-.botao {
-
-    display: block;
-
-    text-decoration: none;
-
-    padding: 15px;
-
-    border-radius: 10px;
-
-    margin-top: 12px;
-
-    background: #d4af37;
-
-    color: #000;
-
-    font-weight: bold;
-
-}
-
-.whatsapp {
-
-    background: #25D366;
-
-    color: white;
-
-}
-
-.info {
-
-    color: #aaa;
-
-    line-height: 1.6;
-
-}
-
-footer {
-
-    text-align: center;
-
-    color: #666;
-
-    margin-top: 25px;
-
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="box">
-
-<div class="card">
-
-<div class="nome">
-
-{{ perfil.nome }}
-
-</div>
-
-<div class="profissao">
-
-{{ perfil.profissao or "Profissional autônomo" }}
-
-</div>
-
-
-{% if perfil.cidade %}
-
-<p class="info">
-📍 {{ perfil.cidade }}
-</p>
-
-{% endif %}
-
-
-{% if perfil.descricao %}
-
-<div class="secao">
-
-<h3>
-Sobre mim
-</h3>
-
-<p class="info">
-{{ perfil.descricao }}
-</p>
-
-</div>
-
-{% endif %}
-
-
-{% if perfil.servicos %}
-
-<div class="secao">
-
-<h3>
-Serviços
-</h3>
-
-<p class="info">
-{{ perfil.servicos }}
-</p>
-
-</div>
-
-{% endif %}
-
-
-{% if perfil.habilidades %}
-
-<div class="secao">
-
-<h3>
-Habilidades
-</h3>
-
-<p class="info">
-{{ perfil.habilidades }}
-</p>
-
-</div>
-
-{% endif %}
-
-
-{% if perfil.experiencia %}
-
-<div class="secao">
-
-<h3>
-Experiência
-</h3>
-
-<p class="info">
-{{ perfil.experiencia }}
-</p>
-
-</div>
-
-{% endif %}
-
-
-{% if perfil.email %}
-
-<a
-class="botao"
-href="mailto:{{ perfil.email }}"
->
-📧 ENVIAR E-MAIL
-</a>
-
-{% endif %}
-
-
-{% if whatsapp_url %}
-
-<a
-class="botao whatsapp"
-href="{{ whatsapp_url }}"
-target="_blank"
->
-📱 FALAR PELO WHATSAPP
-</a>
-
-{% endif %}
-
-
-{% if perfil.instagram %}
-
-<a
-class="botao"
-href="{{ perfil.instagram }}"
-target="_blank"
->
-📸 INSTAGRAM
-</a>
-
-{% endif %}
-
-
-<footer>
-
-Proposta Exclusiva
-
-</footer>
-
-</div>
-
-</div>
-
-</body>
-
-</html>
-
-""",
-        perfil=perfil,
-        whatsapp_url=whatsapp_url
+        html,
+        usuario=usuario_atual()
     )
 
 
@@ -4541,42 +2211,1020 @@ Proposta Exclusiva
 # WHATSAPP
 # ================================================================
 
-@app.route(
-    "/whatsapp",
-    methods=["POST"]
-)
+@app.route("/whatsapp", methods=["GET", "POST"])
+@login_required
 def whatsapp():
 
-    numero = request.form.get(
-        "telefone",
-        ""
-    )
+    link = None
 
-    mensagem = request.form.get(
-        "mensagem",
-        ""
-    )
+    if request.method == "POST":
 
-    numero = telefone_whatsapp(
-        numero
-    )
-
-    if not numero:
-
-        return (
-            "Telefone inválido.",
-            400
+        telefone = limpar_telefone(
+            request.form.get(
+                "telefone",
+                ""
+            )
         )
 
-    url = (
-        "https://wa.me/"
-        + numero
-        + "?text="
-        + quote(mensagem)
+        tipo = request.form.get(
+            "tipo",
+            ""
+        )
+
+        cliente = request.form.get(
+            "cliente",
+            "cliente"
+        )
+
+        servico = request.form.get(
+            "servico",
+            ""
+        )
+
+        valor = request.form.get(
+            "valor",
+            ""
+        )
+
+        mensagens = {
+
+            "Primeiro contato":
+            f"Olá, {cliente}! Tudo bem? "
+            "Meu nome é "
+            + usuario_atual().nome
+            + ". Entrei em contato para apresentar "
+              "meus serviços. Posso enviar mais informações?",
+
+            "Envio de proposta":
+            f"Olá, {cliente}! Conforme conversamos, "
+            f"preparei a proposta para o serviço de "
+            f"{servico}. O valor é {valor}. "
+            "Fico à disposição para qualquer dúvida.",
+
+            "Envio de orçamento":
+            f"Olá, {cliente}! Segue o orçamento referente "
+            f"ao serviço de {servico}. "
+            f"Valor: {valor}. "
+            "Qualquer dúvida estou à disposição.",
+
+            "Confirmação de serviço":
+            f"Olá, {cliente}! Confirmando nosso serviço "
+            f"de {servico}. "
+            "Obrigado pela confiança!",
+
+            "Lembrete de pagamento":
+            f"Olá, {cliente}! Tudo bem? "
+            "Passando para lembrar sobre o pagamento "
+            f"referente ao serviço de {servico}. "
+            f"Valor: {valor}. Obrigado!",
+
+            "Confirmação de agendamento":
+            f"Olá, {cliente}! Seu serviço de {servico} "
+            "está confirmado. "
+            "Qualquer alteração, por favor me avise.",
+
+            "Pós-venda":
+            f"Olá, {cliente}! Gostaria de saber se ficou "
+            "tudo certo com o serviço realizado. "
+            "Muito obrigado pela confiança!",
+
+            "Pedido de avaliação":
+            f"Olá, {cliente}! Espero que tenha gostado "
+            "do serviço. Se puder, deixe uma avaliação "
+            "sobre meu trabalho. Isso me ajuda muito!"
+        }
+
+        mensagem = mensagens.get(
+            tipo,
+            "Olá! Tudo bem?"
+        )
+
+        from urllib.parse import quote
+
+        link = (
+            "https://wa.me/"
+            + telefone
+            + "?text="
+            + quote(mensagem)
+        )
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+
+    <head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+    <title>WhatsApp</title>
+
+    """ + STYLE + """
+
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>📱 WhatsApp</h1>
+
+    <div class="card">
+
+    <form method="POST">
+
+    <label>Telefone</label>
+
+    <input
+    name="telefone"
+    placeholder="77999999999"
+    required
+    >
+
+    <label>Cliente</label>
+
+    <input
+    name="cliente"
+    placeholder="Nome do cliente"
+    >
+
+    <label>Tipo de mensagem</label>
+
+    <select name="tipo">
+
+    <option>Primeiro contato</option>
+    <option>Envio de proposta</option>
+    <option>Envio de orçamento</option>
+    <option>Confirmação de serviço</option>
+    <option>Lembrete de pagamento</option>
+    <option>Confirmação de agendamento</option>
+    <option>Pós-venda</option>
+    <option>Pedido de avaliação</option>
+
+    </select>
+
+    <label>Serviço</label>
+
+    <input name="servico">
+
+    <label>Valor</label>
+
+    <input name="valor">
+
+    <button class="btn">
+    GERAR MENSAGEM
+    </button>
+
+    </form>
+
+    {% if link %}
+
+    <div class="alert">
+
+    Mensagem pronta!
+
+    </div>
+
+    <a
+    class="btn"
+    href="{{ link }}"
+    target="_blank"
+    >
+    ABRIR NO WHATSAPP
+    </a>
+
+    {% endif %}
+
+    </div>
+
+    </div>
+
+    </body>
+    </html>
+    """
+
+    return render_template_string(
+        html,
+        link=link
     )
 
+
+# ================================================================
+# RECIBO
+# ================================================================
+
+@app.route("/recibo", methods=["GET", "POST"])
+@login_required
+def recibo():
+
+    if request.method == "POST":
+
+        usuario = usuario_atual()
+
+        cliente = request.form.get(
+            "cliente",
+            ""
+        )
+
+        valor = dinheiro(
+            request.form.get("valor")
+        )
+
+        descricao = request.form.get(
+            "descricao",
+            ""
+        )
+
+        forma_pagamento = request.form.get(
+            "pagamento",
+            ""
+        )
+
+        caminho, doc, titulo_style, normal = gerar_pdf_base(
+            "recibo.pdf",
+            "Recibo"
+        )
+
+        elementos = []
+
+        elementos.append(
+            Paragraph(
+                "RECIBO",
+                titulo_style
+            )
+        )
+
+        elementos.append(
+            Paragraph(
+                f"Recebi de <b>{escape_pdf(cliente)}</b> "
+                f"a quantia de <b>{brl(valor)}</b>.",
+                normal
+            )
+        )
+
+        elementos.append(Spacer(1, 15))
+
+        elementos.append(
+            Paragraph(
+                f"<b>Referente a:</b> "
+                f"{escape_pdf(descricao)}",
+                normal
+            )
+        )
+
+        elementos.append(
+            Paragraph(
+                f"<b>Forma de pagamento:</b> "
+                f"{escape_pdf(forma_pagamento)}",
+                normal
+            )
+        )
+
+        elementos.append(Spacer(1, 30))
+
+        elementos.append(
+            Paragraph(
+                escape_pdf(usuario.nome),
+                normal
+            )
+        )
+
+        elementos.append(
+            Paragraph(
+                datetime.now().strftime(
+                    "%d/%m/%Y"
+                ),
+                normal
+            )
+        )
+
+        doc.build(elementos)
+
+        registrar_documento(
+            "Recibo",
+            cliente,
+            descricao
+        )
+
+        return send_file(
+            caminho,
+            as_attachment=True,
+            download_name="recibo.pdf"
+        )
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+
+    <head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+    <title>Recibo</title>
+
+    """ + STYLE + """
+
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>🧾 Recibo</h1>
+
+    <div class="card">
+
+    <form method="POST">
+
+    <label>Cliente</label>
+    <input name="cliente" required>
+
+    <label>Valor</label>
+    <input
+    name="valor"
+    placeholder="Ex: 500,00"
+    required
+    >
+
+    <label>Referente a</label>
+
+    <textarea
+    name="descricao"
+    required
+    ></textarea>
+
+    <label>Forma de pagamento</label>
+
+    <input
+    name="pagamento"
+    placeholder="PIX, dinheiro, cartão..."
+    >
+
+    <button class="btn">
+    GERAR RECIBO PDF
+    </button>
+
+    </form>
+
+    </div>
+
+    </div>
+
+    </body>
+
+    </html>
+    """
+
+    return render_template_string(
+        html
+    )
+
+
+# ================================================================
+# AGENDA
+# ================================================================
+
+@app.route("/agenda", methods=["GET", "POST"])
+@login_required
+def agenda():
+
+    if request.method == "POST":
+
+        cliente_id = request.form.get(
+            "cliente_id"
+        )
+
+        cliente = None
+
+        if cliente_id:
+
+            cliente = Cliente.query.filter_by(
+                id=cliente_id,
+                usuario_id=session["usuario_id"]
+            ).first()
+
+        servico = Servico(
+            usuario_id=session["usuario_id"],
+            cliente_id=cliente.id if cliente else None,
+            titulo=request.form.get(
+                "titulo",
+                ""
+            ),
+            descricao=request.form.get(
+                "descricao",
+                ""
+            ),
+            data=request.form.get(
+                "data",
+                ""
+            ),
+            valor=dinheiro(
+                request.form.get("valor")
+            ),
+            status="Agendado"
+        )
+
+        if not servico.titulo:
+            flash("Informe o serviço.")
+            return redirect(url_for("agenda"))
+
+        db.session.add(servico)
+        db.session.commit()
+
+        flash("Serviço adicionado à agenda.")
+
+        return redirect(
+            url_for("agenda")
+        )
+
+    clientes_lista = Cliente.query.filter_by(
+        usuario_id=session["usuario_id"]
+    ).all()
+
+    servicos = Servico.query.filter_by(
+        usuario_id=session["usuario_id"]
+    ).order_by(
+        Servico.id.desc()
+    ).all()
+
+    html = """
+    <!DOCTYPE html>
+
+    <html lang="pt-BR">
+
+    <head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+    <title>Agenda</title>
+
+    """ + STYLE + """
+
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>📅 Agenda</h1>
+
+    {% with messages = get_flashed_messages() %}
+    {% for message in messages %}
+    <div class="alert">{{ message }}</div>
+    {% endfor %}
+    {% endwith %}
+
+    <div class="card">
+
+    <h2>Novo serviço</h2>
+
+    <form method="POST">
+
+    <label>Cliente</label>
+
+    <select name="cliente_id">
+
+    <option value="">
+Sem cliente
+    </option>
+
+    {% for cliente in clientes_lista %}
+
+    <option value="{{ cliente.id }}">
+    {{ cliente.nome }}
+    </option>
+
+    {% endfor %}
+
+    </select>
+
+    <label>Serviço</label>
+
+    <input
+    name="titulo"
+    required
+    >
+
+    <label>Descrição</label>
+
+    <textarea name="descricao"></textarea>
+
+    <label>Data e horário</label>
+
+    <input
+    type="datetime-local"
+    name="data"
+    >
+
+    <label>Valor</label>
+
+    <input name="valor">
+
+    <button class="btn">
+    AGENDAR
+    </button>
+
+    </form>
+
+    </div>
+
+
+    <div class="card">
+
+    <h2>Meus serviços</h2>
+
+    {% for item in servicos %}
+
+    <div class="card">
+
+    <h3>{{ item.titulo }}</h3>
+
+    <p>
+    {{ item.descricao or "" }}
+    </p>
+
+    <p>
+    📅 {{ item.data or "Data não informada" }}
+    </p>
+
+    <p>
+    💰 {{ "%.2f"|format(item.valor)|replace(".", ",") }}
+    </p>
+
+    <p>
+    Status: <b>{{ item.status }}</b>
+    </p>
+
+    <a
+    class="btn"
+    href="/servico/status/{{ item.id }}"
+    >
+    ALTERAR STATUS
+    </a>
+
+    <a
+    class="btn btn-danger"
+    href="/servico/excluir/{{ item.id }}"
+    onclick="return confirm('Excluir serviço?')"
+    >
+    EXCLUIR
+    </a>
+
+    </div>
+
+    {% else %}
+
+    <p>Nenhum serviço agendado.</p>
+
+    {% endfor %}
+
+    </div>
+
+    </div>
+
+    </body>
+
+    </html>
+    """
+
+    return render_template_string(
+        html,
+        clientes_lista=clientes_lista,
+        servicos=servicos
+    )
+
+
+@app.route(
+    "/servico/status/<int:id>"
+)
+@login_required
+def status_servico(id):
+
+    servico = Servico.query.filter_by(
+        id=id,
+        usuario_id=session["usuario_id"]
+    ).first()
+
+    if servico:
+
+        estados = [
+            "Agendado",
+            "Em andamento",
+            "Concluído",
+            "Cancelado"
+        ]
+
+        atual = servico.status
+
+        try:
+            posicao = estados.index(atual)
+            servico.status = estados[
+                (posicao + 1) % len(estados)
+            ]
+        except:
+            servico.status = "Agendado"
+
+        db.session.commit()
+
     return redirect(
-        url
+        url_for("agenda")
+    )
+
+
+@app.route(
+    "/servico/excluir/<int:id>"
+)
+@login_required
+def excluir_servico(id):
+
+    servico = Servico.query.filter_by(
+        id=id,
+        usuario_id=session["usuario_id"]
+    ).first()
+
+    if servico:
+
+        db.session.delete(servico)
+
+        db.session.commit()
+
+    return redirect(
+        url_for("agenda")
+    )
+
+
+# ================================================================
+# FINANCEIRO
+# ================================================================
+
+@app.route(
+    "/financeiro",
+    methods=["GET", "POST"]
+)
+@login_required
+def financeiro():
+
+    if request.method == "POST":
+
+        tipo = request.form.get(
+            "tipo",
+            "entrada"
+        )
+
+        movimento = Movimento(
+            usuario_id=session["usuario_id"],
+            tipo=tipo,
+            descricao=request.form.get(
+                "descricao",
+                ""
+            ),
+            valor=dinheiro(
+                request.form.get("valor")
+            ),
+            data=request.form.get(
+                "data",
+                ""
+            )
+        )
+
+        if not movimento.descricao:
+            flash("Informe a descrição.")
+            return redirect(
+                url_for("financeiro")
+            )
+
+        db.session.add(movimento)
+
+        db.session.commit()
+
+        flash("Movimento financeiro registrado.")
+
+        return redirect(
+            url_for("financeiro")
+        )
+
+    movimentos = Movimento.query.filter_by(
+        usuario_id=session["usuario_id"]
+    ).order_by(
+        Movimento.id.desc()
+    ).all()
+
+    entradas = sum(
+        m.valor
+        for m in movimentos
+        if m.tipo == "entrada"
+    )
+
+    saidas = sum(
+        m.valor
+        for m in movimentos
+        if m.tipo == "saida"
+    )
+
+    saldo = entradas - saidas
+
+    html = """
+    <!DOCTYPE html>
+
+    <html lang="pt-BR">
+
+    <head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+    <title>Financeiro</title>
+
+    """ + STYLE + """
+
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>💰 Financeiro</h1>
+
+    {% with messages = get_flashed_messages() %}
+    {% for message in messages %}
+    <div class="alert">{{ message }}</div>
+    {% endfor %}
+    {% endwith %}
+
+    <div class="grid">
+
+    <div class="card">
+    <div class="small">Entradas</div>
+    <div class="stat">
+    R$ {{ "%.2f"|format(entradas)|replace(".", ",") }}
+    </div>
+    </div>
+
+    <div class="card">
+    <div class="small">Saídas</div>
+    <div class="stat">
+    R$ {{ "%.2f"|format(saidas)|replace(".", ",") }}
+    </div>
+    </div>
+
+    <div class="card">
+    <div class="small">Saldo</div>
+    <div class="stat">
+    R$ {{ "%.2f"|format(saldo)|replace(".", ",") }}
+    </div>
+    </div>
+
+    </div>
+
+
+    <div class="card">
+
+    <h2>Novo lançamento</h2>
+
+    <form method="POST">
+
+    <label>Tipo</label>
+
+    <select name="tipo">
+
+    <option value="entrada">
+    Entrada
+    </option>
+
+    <option value="saida">
+    Saída
+    </option>
+
+    </select>
+
+    <label>Descrição</label>
+
+    <input
+    name="descricao"
+    placeholder="Ex: Pagamento cliente"
+    required
+    >
+
+    <label>Valor</label>
+
+    <input
+    name="valor"
+    placeholder="Ex: 500,00"
+    required
+    >
+
+    <label>Data</label>
+
+    <input
+    type="date"
+    name="data"
+    >
+
+    <button class="btn">
+    SALVAR
+    </button>
+
+    </form>
+
+    </div>
+
+
+    <div class="card">
+
+    <h2>Movimentos</h2>
+
+    <table>
+
+    <tr>
+    <th>Tipo</th>
+    <th>Descrição</th>
+    <th>Valor</th>
+    <th>Ação</th>
+    </tr>
+
+    {% for m in movimentos %}
+
+    <tr>
+
+    <td>{{ m.tipo }}</td>
+
+    <td>{{ m.descricao }}</td>
+
+    <td>
+    R$ {{ "%.2f"|format(m.valor)|replace(".", ",") }}
+    </td>
+
+    <td>
+
+    <a
+    class="btn btn-danger"
+    href="/financeiro/excluir/{{ m.id }}"
+    onclick="return confirm('Excluir lançamento?')"
+    >
+    Excluir
+    </a>
+
+    </td>
+
+    </tr>
+
+    {% endfor %}
+
+    </table>
+
+    </div>
+
+    </div>
+
+    </body>
+
+    </html>
+    """
+
+    return render_template_string(
+        html,
+        movimentos=movimentos,
+        entradas=entradas,
+        saidas=saidas,
+        saldo=saldo
+    )
+
+
+@app.route(
+    "/financeiro/excluir/<int:id>"
+)
+@login_required
+def excluir_movimento(id):
+
+    movimento = Movimento.query.filter_by(
+        id=id,
+        usuario_id=session["usuario_id"]
+    ).first()
+
+    if movimento:
+
+        db.session.delete(movimento)
+
+        db.session.commit()
+
+    return redirect(
+        url_for("financeiro")
+    )
+
+
+# ================================================================
+# HISTÓRICO
+# ================================================================
+
+@app.route("/historico")
+@login_required
+def historico():
+
+    documentos = Documento.query.filter_by(
+        usuario_id=session["usuario_id"]
+    ).order_by(
+        Documento.id.desc()
+    ).all()
+
+    html = """
+    <!DOCTYPE html>
+
+    <html lang="pt-BR">
+
+    <head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+    <title>Histórico</title>
+
+    """ + STYLE + """
+
+    </head>
+
+    <body>
+
+    <div class="container">
+
+    <a href="/">← Painel</a>
+
+    <h1>📊 Histórico</h1>
+
+    <div class="card">
+
+    {% if documentos %}
+
+    <table>
+
+    <tr>
+
+    <th>Tipo</th>
+    <th>Cliente</th>
+    <th>Título</th>
+    <th>Data</th>
+
+    </tr>
+
+    {% for d in documentos %}
+
+    <tr>
+
+    <td>{{ d.tipo }}</td>
+
+    <td>{{ d.cliente or "-" }}</td>
+
+    <td>{{ d.titulo or "-" }}</td>
+
+    <td>
+    {{ d.criado_em.strftime("%d/%m/%Y %H:%M") }}
+    </td>
+
+    </tr>
+
+    {% endfor %}
+
+    </table>
+
+    {% else %}
+
+    <p>
+    Você ainda não criou documentos.
+    </p>
+
+    {% endif %}
+
+    </div>
+
+    </div>
+
+    </body>
+
+    </html>
+    """
+
+    return render_template_string(
+        html,
+        documentos=documentos
     )
 
 
@@ -4584,22 +3232,84 @@ def whatsapp():
 # HEALTH CHECK
 # ================================================================
 
-@app.route(
-    "/health"
-)
+@app.route("/health")
 def health():
 
     return {
-
         "status": "ok",
-
-        "app":
-        "Proposta Exclusiva",
-
-        "version":
-        "5.0"
-
+        "app": "Proposta Exclusiva",
+        "version": "7.0",
+        "login": True,
+        "database": True
     }
+
+
+# ================================================================
+# ERROS
+# ================================================================
+
+@app.errorhandler(404)
+def erro_404(error):
+
+    return """
+    <div style="
+        font-family:Arial;
+        background:#080808;
+        color:white;
+        padding:40px;
+        text-align:center;
+    ">
+
+    <h1 style="color:#d4af37">
+    Página não encontrada
+    </h1>
+
+    <p>
+    A página que você procurou não existe.
+    </p>
+
+    <a
+    href="/"
+    style="color:#d4af37"
+    >
+    Voltar ao início
+    </a>
+
+    </div>
+    """, 404
+
+
+@app.errorhandler(500)
+def erro_500(error):
+
+    db.session.rollback()
+
+    return """
+    <div style="
+        font-family:Arial;
+        background:#080808;
+        color:white;
+        padding:40px;
+        text-align:center;
+    ">
+
+    <h1 style="color:#d4af37">
+    Ocorreu um erro
+    </h1>
+
+    <p>
+    Tente novamente.
+    </p>
+
+    <a
+    href="/"
+    style="color:#d4af37"
+    >
+    Voltar ao início
+    </a>
+
+    </div>
+    """, 500
 
 
 # ================================================================
@@ -4616,9 +3326,6 @@ if __name__ == "__main__":
     )
 
     app.run(
-
         host="0.0.0.0",
-
         port=port
-
-)
+    )
