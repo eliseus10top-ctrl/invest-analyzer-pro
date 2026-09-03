@@ -298,7 +298,7 @@ def short(value, max_chars=900):
     return value[:max_chars-3].rstrip() + "..." if len(value) > max_chars else value
 
 # ============================================================
-# 📄 GERAR PDF
+# 📄 GERAR PDF — CORRIGIDO! <br/> FECHADO ✅
 # ============================================================
 
 def generate_pdf(data):
@@ -341,25 +341,26 @@ def generate_pdf(data):
     story = []
 
     company = pdf_text(data.get("empresa") or "EMPRESA")
-    contact = f"Tel: {pdf_text(data.get('empresa_whatsapp',''))}<br>Email: {pdf_text(data.get('empresa_email',''))}"
+
+    # ✅ CORRIGIDO: Usar <br/> FECHADO — sem conteúdo dentro!
+    header_left = Paragraph(f"<b>{company}</b>", styles["BrandPro"])
+    header_right = Paragraph(f"Proposta nº {numero}<br/>Emitida em: {data_emissao}", styles["TinyPro"])
 
     header = Table([
-        [Paragraph(f"<b>{company}</b>", styles["Title"]), Paragraph(f"Proposta nº {numero}<br>{data_emissao}", styles["TinyPro"])]
+        [header_left, header_right]
     ], colWidths=[130*mm, 44*mm])
     header.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,-1), light_gold),
-        ("TEXTCOLOR", (0,0), (-1,-1), black),
-        ("FONTSIZE", (0,0), (0,0), 18),
-        ("FONTSIZE", (1,0), (1,0), 9),
         ("ALIGN", (0,0), (0,0), "LEFT"),
         ("ALIGN", (1,0), (1,0), "RIGHT"),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("PADDING", (0,0), (-1,-1), 12),
+        ("BOX", (0,0), (-1,-1), 0.5, gold),
     ]))
     story.extend([header, Spacer(1, 10*mm)])
 
     story.append(Paragraph("DADOS DO CLIENTE", styles["SectionPro"]))
-    cliente_info = f"Nome: {pdf_text(data.get('cliente',''))}<br>WhatsApp: {pdf_text(data.get('whatsapp',''))}<br>Endereço: {pdf_text(data.get('endereco',''))}"
+    cliente_info = f"Nome: {pdf_text(data.get('cliente',''))}<br/>WhatsApp: {pdf_text(data.get('whatsapp',''))}<br/>Endereço: {pdf_text(data.get('endereco',''))}"
     story.append(Paragraph(cliente_info, styles["BodyPro"]))
     story.append(Spacer(1, 5*mm))
 
@@ -388,16 +389,18 @@ def generate_pdf(data):
     story.append(fin_table)
     story.append(Spacer(1, 8*mm))
 
-    story.append(Paragraph("CONDIÇÕES", styles["SectionPro"]))
-    cond_text = f"Validade: {pdf_text(data.get('validade','7 dias'))}<br>Prazo de execução: {pdf_text(data.get('prazo','A combinar'))}<br>Pagamento: {pdf_text(data.get('pagamento','A combinar'))}<br>Garantia: {pdf_text(data.get('garantia','A combinar'))}"
+    story.append(Paragraph("CONDIÇÕES COMERCIAIS", styles["SectionPro"]))
+    cond_text = f"Validade: {pdf_text(data.get('validade','7 dias'))}<br/>Prazo de execução: {pdf_text(data.get('prazo','A combinar'))}<br/>Forma de pagamento: {pdf_text(data.get('pagamento','A combinar'))}<br/>Garantia: {pdf_text(data.get('garantia','A combinar'))}"
     story.append(Paragraph(cond_text, styles["BodyPro"]))
-    story.append(Spacer(1, 10*mm))
+    story.append(Spacer(1, 15*mm))
 
-    story.append(Paragraph("________________________________________", styles["CenterBoldPro"]))
-    story.append(Paragraph(f"{company}<br>Responsável", styles["CenterBoldPro"]))
-    story.append(Spacer(1, 10*mm))
-    story.append(Paragraph("________________________________________", styles["CenterBoldPro"]))
-    story.append(Paragraph(f"{pdf_text(data.get('cliente','Cliente'))}<br>Data: {data_emissao}", styles["CenterBoldPro"]))
+    assinatura_table = Table([
+        [Paragraph("_" * 30, styles["CenterBoldPro"]), Paragraph("_" * 30, styles["CenterBoldPro"])],
+        [Paragraph(f"{company}", styles["CenterBoldPro"]), Paragraph(f"{pdf_text(data.get('cliente','Cliente'))}", styles["CenterBoldPro"])],
+        [Paragraph("Responsável", styles["TinyPro"]), Paragraph("Cliente", styles["TinyPro"])],
+    ], colWidths=[85*mm, 85*mm])
+    assinatura_table.setStyle(TableStyle([("ALIGN", (0,0), (-1,-1), "CENTER"), ("VALIGN", (0,0), (-1,-1), "MIDDLE")]))
+    story.append(assinatura_table)
 
     def footer(canvas, doc):
         canvas.saveState()
@@ -467,7 +470,7 @@ def whatsapp():
             limite_gratis=LIMITE_GRATIS, link_pagamento=LINK_PAGAMENTO,
             link_whatsapp_suporte=LINK_WHATSAPP_SUPORTE), 400
 
-    # ✅ LINHA CORRIGIDA — FECHADA!
+    # ✅ F-string FECHADA corretamente!
     texto = f"Olá, {data.get('cliente','')}! 👋\nSegue sua proposta de {data.get('servico','')} no valor de {money_br(total)}.\nValidade: {data.get('validade','7 dias')}\nAgradeço pela confiança! 😊"
     
     url = f"https://wa.me/{phone}?text={quote(texto)}"
