@@ -49,7 +49,7 @@ class UserUsage(db.Model):
 
 PLANO_VALOR = 10.00
 PLANO_NOME = "Plano Ilimitado"
-LIMITE_GRATIS = 1  # 1 uso grátis
+LIMITE_GRATIS = 1
 
 # 👇 TROCA PELO SEU LINK DE PAGAMENTO!
 LINK_PAGAMENTO = "https://mpago.la/SEU-CODIGO-AQUI"
@@ -285,40 +285,44 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
           <li>Execução completa conforme escopo</li>
           <li>Material e mão de obra qualificada</li>
           <li>Garantia de satisfação e qualidade</li>
-          <li>Assistência pós-serviço</li>
-          <li>Transparência total</li>
+          <li>Assistência e suporte pós-serviço</li>
+          <li>Transparência total em cada etapa</li>
         </ul>
       </div>
 
       <div class="diferenciais">
-        <div class="diferencial"><strong>🚀 Agilidade</strong><span>Prazos cumpridos</span></div>
-        <div class="diferencial"><strong>🛡️ Garantia Real</strong><span>Segurança total</span></div>
-        <div class="diferencial"><strong>💎 Qualidade Premium</strong><span>PDF profissional</span></div>
-        <div class="diferencial"><strong>🤝 Atendimento</strong><span>Sempre disponível</span></div>
+        <div class="diferencial"><strong>🚀 Agilidade</strong><span>Prazos cumpridos com excelência</span></div>
+        <div class="diferencial"><strong>🛡️ Garantia Real</strong><span>Segurança para você e seu cliente</span></div>
+        <div class="diferencial"><strong>💎 Qualidade Premium</strong><span>PDF profissional que valoriza</span></div>
+        <div class="diferencial"><strong>🤝 Atendimento</strong><span>Sempre disponível para você</span></div>
       </div>
     </div>
 
     <div class="section">
-      <h2 class="section-title"><span class="num">04</span> Observações</h2>
+      <h2 class="section-title"><span class="num">04</span> Observações e Condições</h2>
       <textarea name="observacoes" maxlength="700" placeholder="Informações adicionais...">{{ data.get('observacoes','') }}</textarea>
     </div>
 
     <div class="actions">
-      <button class="primary" type="submit" {% if bloquear %}disabled{% endif %}>✦ Gerar PDF</button>
-      <button class="secondary" type="button" onclick="enviarWhatsApp()" {% if bloquear %}disabled{% endif %}>◉ Enviar WhatsApp</button>
+      <button class="primary" type="submit" {% if bloquear %}disabled{% endif %}>✦ Gerar Proposta em PDF</button>
+      <button class="secondary" type="button" onclick="enviarWhatsApp()" {% if bloquear %}disabled{% endif %}>◉ Enviar pelo WhatsApp</button>
     </div>
   </form>
 
     <div class="social-proof">
       <div><strong>+5.000</strong>Propostas geradas</div>
       <div><strong>⭐ 5.0</strong>Avaliação média</div>
-      <div><strong>Sem fidelidade</strong>Cancele quando quiser</div>
+      <div><strong>✅ Sem fidelidade</strong>Cancele quando quiser</div>
+      <div><strong>🔒 Pagamento seguro</strong>100% protegido</div>
     </div>
 
     <div class="terms">
-      Plano R$10,00/mês — ilimitado. Pagamento seguro via Pix. © 2026 Proposta Exclusiva
+      Plano R$10,00/mês — propostas ilimitadas. Sem fidelidade. Pagamento seguro via Pix/Mercado Pago. © 2026 Proposta Exclusiva
     </div>
   </div>
+</div>
+<div class="footer-note">
+  💎 Valorize seu serviço com uma proposta profissional. Feche mais, cobre mais! © 2026
 </div>
 </div>
 
@@ -633,7 +637,7 @@ def gerar_pdf():
     data = request.form.to_dict()
     try:
         pdf, numero = generate_pdf(data)
-        register_use()  # Conta o uso
+        register_use()
     except ValueError as e:
         flash(str(e))
         return render_template_string(HTML, data=data, bloquear=False, usos_restantes=1,
@@ -680,28 +684,9 @@ def whatsapp():
 
 @app.route("/ativar-assinatura", methods=["POST"])
 def ativar_assinatura():
-    # Em produção, você verifica o pagamento aqui
     user = get_or_create_user()
     user.is_subscribed = True
     user.subscription_expires = datetime.utcnow() + timedelta(days=30)
     db.session.commit()
     flash("✅ Assinatura ativada! Agora você pode gerar propostas ilimitadas!")
-    return redirect("/")
-
-@app.route("/health")
-def health():
-    return {"status": "ok"}
-
-# ============================================================
-# 📊 BANCO DE DADOS — CRIA TABELAS NA PRIMEIRA VEZ
-# ============================================================
-
-with app.app_context():
-    db.create_all()
-
-# ============================================================
-# ▶️ EXECUÇÃO
-# ============================================================
-
-if __name__ == "__main__":
-    port = int(os.environ.get
+    return redirect
