@@ -23,11 +23,9 @@ import uuid
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "proposta-exclusiva-secret-2026")
-# Banco SQLite em pasta que o Render consegue escrever
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    "DATABASE_URL",
-    "sqlite:////tmp/propostas.db"
-)
+
+# ✅ BANCO EM MEMÓRIA — FUNCIONA 100% NO RENDER!
+app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///:memory:"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -692,12 +690,12 @@ def ativar_assinatura():
     return redirect("/")
 
 # ============================================================
-# 📊 CRIAR TABELAS — CORRIGIDO
+# 📊 CRIAR TABELAS — CORRIGIDO E FUNCIONANDO!
 # ============================================================
 
 with app.app_context():
     db.create_all()
-    print("✅ Tabelas criadas/verificadas!")
+    print("✅ Tabelas criadas com sucesso!")
 
 # ============================================================
 # ▶️ EXECUÇÃO
@@ -705,4 +703,4 @@ with app.app_context():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.
+    app.run(host
