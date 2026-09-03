@@ -49,15 +49,14 @@ class UserUsage(db.Model):
 
 PLANO_VALOR = 10.00
 PLANO_NOME = "Plano Ilimitado"
-PLANO_DESCRICAO = "Propostas ilimitadas, sem marca d'água, PDF premium"
 LIMITE_GRATIS = 1  # 1 uso grátis
 
-# 👇 COLOCA SEU LINK DE PAGAMENTO AQUI!
-LINK_PAGAMENTO = "https://mpago.la/SEU-CODIGO-AQUI"  # ← TROCA PELO SEU!
-LINK_WHATSAPP_SUPORTE = "https://wa.me/5577999999999?text=Quero%20ativar%20meu%20plano!"
+# 👇 TROCA PELO SEU LINK DE PAGAMENTO!
+LINK_PAGAMENTO = "https://mpago.la/SEU-CODIGO-AQUI"
+LINK_WHATSAPP_SUPORTE = "https://wa.me/5577999999999?text=Quero%20ativar%20minha%20assinatura!"
 
 # ============================================================
-# 🎨 INTERFACE WEB — COM BLOQUEIO E PLANOS
+# 🎨 INTERFACE WEB
 # ============================================================
 
 HTML = """
@@ -66,16 +65,14 @@ HTML = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#111111">
-<title>Proposta Exclusiva — Profissional</title>
+<title>Proposta Exclusiva — PDF Profissional</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --black:#0b0b0b;--gold:#b08d57;--gold2:#d6b77a;--gold-light:#f7f1e5;
   --ink:#171717;--muted:#737373;--line:#e5e0d7;--bg:#f4f2ee;--card:#fff;
-  --success:#00703c;--urgency:#c53030;--locked:#dc2626;--unlocked:#16a34a;
+  --success:#00703c;--locked:#dc2626;
 }
-html{scroll-behavior:smooth}
 body{
   background:radial-gradient(circle at 8% 0%,rgba(176,141,87,.13),transparent 30%),
   radial-gradient(circle at 95% 10%,rgba(17,17,17,.07),transparent 28%),var(--bg);
@@ -84,45 +81,38 @@ body{
 .container{max-width:1060px;margin:0 auto;padding:20px 16px 60px}
 .card{background:var(--card);border:1px solid rgba(17,17,17,.06);border-radius:32px;
   overflow:hidden;box-shadow:0 30px 100px rgba(17,17,17,.15);position:relative;}
-.hero{position:relative;overflow:hidden;padding:40px 34px 38px;color:#fff;
+.hero{padding:40px 34px 38px;color:#fff;
   background:radial-gradient(circle at 92% -10%,rgba(214,183,122,.35),transparent 35%),
   radial-gradient(circle at 0% 100%,rgba(176,141,87,.15),transparent 38%),
   linear-gradient(145deg,#050505,#141414 50%,#1f1c16);
   border-bottom:1px solid rgba(214,183,122,.4);
 }
-.brand{display:flex;align-items:center;gap:16px;position:relative;z-index:1}
+.brand{display:flex;align-items:center;gap:16px}
 .logo{width:64px;height:64px;border-radius:20px;display:flex;align-items:center;justify-content:center;
   font-weight:900;font-size:22px;color:var(--gold-light);
   background:linear-gradient(145deg,#2a2a2a,#101010);border:1px solid rgba(214,183,122,.6);
-  box-shadow:0 15px 35px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,255,255,.05);
 }
 .hero h1{margin:0;font-size:32px}
-.hero p{margin:8px 0 0;color:#c8c4b9;font-size:15px;max-width:520px}
+.hero p{margin:8px 0 0;color:#c8c4b9;font-size:15px}
 .hero-badges{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
 .badge{font-size:12px;font-weight:800;color:#f5ead8;padding:8px 14px;border-radius:999px;
   background:rgba(176,141,87,.15);border:1px solid rgba(214,183,122,.3);
-  display:inline-flex;align-items:center;gap:6px;
 }
 .usage-bar{margin-top:18px;padding:12px 16px;border-radius:14px;background:rgba(22,163,74,.08);
   border:1px solid rgba(22,163,74,.25);color:#15803d;font-size:13px;font-weight:600;
-  display:flex;align-items:center;gap:8px;
 }
 .locked{background:rgba(220,38,38,.08);border-color:rgba(220,38,38,.25);color:#b91c1c}
-.usage-fill{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--gold),var(--gold2));width:50%;margin-top:8px}
 .body{padding:34px}
 .section{padding:0 0 32px;margin-bottom:32px;border-bottom:1px solid var(--line);}
-.section:last-of-type{border-bottom:0;margin-bottom:0}
-.section-title{display:flex;align-items:center;gap:12px;margin:0 0 20px;
-  font-size:19px;color:var(--black);
-}
+.section-title{display:flex;align-items:center;gap:12px;margin:0 0 20px;font-size:19px;}
 .num{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#f8f2e7,#eee5d6);
   color:#8b6a38;display:flex;align-items:center;justify-content:center;
-  font-size:12px;font-weight:900;box-shadow:inset 0 0 0 1px #e1d2b9;
+  font-size:12px;font-weight:900;
 }
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .full{grid-column:1/-1}
 label{display:block;font-size:13px;font-weight:800;color:#2d2d2d;margin:0 0 8px}
-input,textarea,select{width:100%;padding:15px 16px;border:1px solid #d9d5ce;border-radius:14px;
+input,textarea{width:100%;padding:15px 16px;border:1px solid #d9d5ce;border-radius:14px;
   background:#fff;color:#171717;font-size:15px;outline:none;transition:.2s;
 }
 input:focus,textarea:focus{border-color:#b08d57;box-shadow:0 0 0 4px rgba(176,141,87,.12);}
@@ -142,25 +132,25 @@ input:focus,textarea:focus{border-color:#b08d57;box-shadow:0 0 0 4px rgba(176,14
 .diferencial span{font-size:13px;color:#5a554c;line-height:1.4}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
 button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:850;
-  cursor:pointer;transition:.2s;letter-spacing:.3px
+  cursor:pointer;transition:.2s;
 }
 .primary{background:linear-gradient(135deg,#b08d57,#947547);color:#fff;border:1px solid #947547;
   box-shadow:0 15px 30px rgba(176,141,87,.35);
 }
-.primary:hover{transform:translateY(-2px);box-shadow:0 20px 40px rgba(176,141,87,.4)}
-.primary:disabled{opacity:.6;cursor:not-allowed;transform:none}
-.secondary{background:#fff;color:#3b3833;border:1px solid #d8d0c2;box-shadow:0 4px 12px rgba(0,0,0,.04);}
-.secondary:hover{border-color:#b08d57;transform:translateY(-1px)}
+.primary:hover{transform:translateY(-2px)}
+.primary:disabled{opacity:.6;cursor:not-allowed}
+.secondary{background:#fff;color:#3b3833;border:1px solid #d8d0c2;}
+.secondary:hover{border-color:#b08d57}
 .flash{background:#fff1f0;border:1px solid #f0c9c4;color:#8d2f25;
-  padding:16px;border-radius:14px;margin-bottom:20px;font-size:14px;line-height:1.5;
+  padding:16px;border-radius:14px;margin-bottom:20px;font-size:14px;
 }
-/* === BLOQUEIO — PLANO === */
-.plan-lock{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);
+.plan-lock{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);
   z-index:100;display:flex;align-items:center;justify-content:center;border-radius:32px;
   padding:30px;text-align:center;
 }
 .plan-card{background:linear-gradient(145deg,#fff,#faf8f3);border:2px solid var(--gold);
-  border-radius:24px;padding:36px 28px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(176,141,87,.2);
+  border-radius:24px;padding:36px 28px;max-width:400px;width:100%;
+  box-shadow:0 20px 60px rgba(176,141,87,.2);
 }
 .plan-card h2{font-size:28px;color:var(--black);margin:0 0 8px}
 .plan-price{font-size:48px;font-weight:900;color:var(--gold);margin:12px 0}
@@ -170,10 +160,8 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
 .plan-features li:before{content:"✓";color:var(--gold);font-weight:900;font-size:18px}
 .plan-btn{width:100%;padding:18px;background:linear-gradient(135deg,#b08d57,#947547);
   color:#fff;border:none;border-radius:14px;font-size:18px;font-weight:800;cursor:pointer;
-  margin-top:10px;box-shadow:0 10px 25px rgba(176,141,87,.35);
+  margin-top:10px;
 }
-.plan-btn:hover{transform:translateY(-2px)}
-.plan-note{font-size:12px;color:var(--muted);margin-top:16px;line-height:1.5}
 .unlock-form{margin-top:20px;padding:16px;background:#f8f6f0;border-radius:12px}
 .unlock-form input{margin-bottom:10px}
 .social-proof{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;
@@ -181,7 +169,6 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
 }
 .social-proof div{font-size:13px;color:#5a554c}
 .social-proof strong{display:block;font-size:18px;color:var(--gold);font-weight:900}
-.footer-note{text-align:center;color:#7a756c;font-size:12px;margin-top:24px;line-height:1.6}
 .terms{font-size:11px;color:#928c83;line-height:1.5;margin-top:20px;text-align:center}
 @media(max-width:768px){
   .container{padding:12px 10px 36px}
@@ -217,13 +204,13 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
         <button class="plan-btn">💳 Assinar Agora — R$ 10,00</button>
       </a>
       <div class="unlock-form">
-        <p style="font-size:14px;margin:0 0 10px;color:#555">Já pagou? Digite seu e-mail/ID para ativar:</p>
+        <p style="font-size:14px;margin:0 0 10px;color:#555">Já pagou? Informe seu e-mail:</p>
         <form method="post" action="/ativar-assinatura">
           <input type="text" name="codigo" placeholder="Seu e-mail ou comprovante" required>
-          <button type="submit" class="secondary" style="width:100%;margin-top:8px">✅ Ativar Minha Conta</button>
+          <button type="submit" class="secondary" style="width:100%;margin-top:8px">✅ Ativar Conta</button>
         </form>
       </div>
-      <p class="plan-note">Pagamento via Pix/Mercado Pago. Acesso imediato após confirmação.<br>
+      <p style="font-size:12px;color:#888;margin-top:16px">Pagamento via Pix. Acesso imediato após confirmação.<br>
         Dúvidas? <a href="{{ link_whatsapp_suporte }}" target="_blank" style="color:var(--gold);font-weight:600">Falar com suporte</a></p>
     </div>
   </div>
@@ -234,7 +221,7 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
       <div class="logo">PE</div>
       <div>
         <h1>Proposta Exclusiva</h1>
-        <p>Propostas profissionais em PDF — gerencie, feche mais e valorize seu serviço.</p>
+        <p>Propostas profissionais em PDF — feche mais e valorize seu serviço.</p>
       </div>
     </div>
     <div class="hero-badges">
@@ -246,9 +233,8 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
     <div class="usage-bar {% if bloquear %}locked{% endif %}">
       {% if not bloquear %}
         ✅ {{ usos_restantes }} de {{ limite_gratis }} propostas grátis restantes
-        <div class="usage-fill" style="width:{{ (limite_gratis - usos_restantes) / limite_gratis * 100 }}%"></div>
       {% else %}
-        ❌ Limite atingido — Assine por apenas R$ 10,00/mês e gere ilimitado!
+        ❌ Limite atingido — Assine por R$ 10,00/mês e gere ilimitado!
       {% endif %}
     </div>
   </div>
@@ -263,128 +249,76 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
     <div class="section">
       <h2 class="section-title"><span class="num">01</span> Sua Empresa</h2>
       <div class="grid">
-        <div class="field">
-          <label>Nome da Empresa *</label>
-          <input name="empresa" required value="{{ data.get('empresa','') }}" placeholder="Ex.: Soluções & Serviços">
-        </div>
-        <div class="field">
-          <label>WhatsApp / Telefone</label>
-          <input name="empresa_whatsapp" value="{{ data.get('empresa_whatsapp','') }}" placeholder="(77) 99999-9999">
-        </div>
-        <div class="field">
-          <label>E-mail</label>
-          <input type="email" name="empresa_email" value="{{ data.get('empresa_email','') }}" placeholder="contato@empresa.com.br">
-        </div>
-        <div class="field">
-          <label>Cidade / Estado</label>
-          <input name="empresa_local" value="{{ data.get('empresa_local','') }}" placeholder="Vitória da Conquista - BA">
-        </div>
-        <div class="field full">
-          <label>CPF / CNPJ <span style="font-weight:500;color:#888">(opcional)</span></label>
-          <input name="empresa_doc" value="{{ data.get('empresa_doc','') }}" placeholder="00.000.000/0001-00">
-        </div>
+        <div><label>Nome da Empresa *</label><input name="empresa" required value="{{ data.get('empresa','') }}" placeholder="Ex.: Soluções & Serviços"></div>
+        <div><label>WhatsApp / Telefone</label><input name="empresa_whatsapp" value="{{ data.get('empresa_whatsapp','') }}" placeholder="(77) 99999-9999"></div>
+        <div><label>E-mail</label><input type="email" name="empresa_email" value="{{ data.get('empresa_email','') }}" placeholder="contato@empresa.com.br"></div>
+        <div><label>Cidade / Estado</label><input name="empresa_local" value="{{ data.get('empresa_local','') }}" placeholder="Vitória da Conquista - BA"></div>
+        <div class="full"><label>CPF / CNPJ (opcional)</label><input name="empresa_doc" value="{{ data.get('empresa_doc','') }}" placeholder="00.000.000/0001-00"></div>
       </div>
     </div>
 
     <div class="section">
       <h2 class="section-title"><span class="num">02</span> Cliente</h2>
       <div class="grid">
-        <div class="field">
-          <label>Nome Completo *</label>
-          <input name="cliente" required value="{{ data.get('cliente','') }}" placeholder="Nome do cliente">
-        </div>
-        <div class="field">
-          <label>WhatsApp do Cliente</label>
-          <input name="whatsapp" value="{{ data.get('whatsapp','') }}" placeholder="(77) 98888-8888">
-        </div>
-        <div class="field full">
-          <label>Endereço Completo</label>
-          <input name="endereco" value="{{ data.get('endereco','') }}" placeholder="Rua, número, bairro, cidade/UF">
-        </div>
+        <div><label>Nome Completo *</label><input name="cliente" required value="{{ data.get('cliente','') }}" placeholder="Nome do cliente"></div>
+        <div><label>WhatsApp do Cliente</label><input name="whatsapp" value="{{ data.get('whatsapp','') }}" placeholder="(77) 98888-8888"></div>
+        <div class="full"><label>Endereço Completo</label><input name="endereco" value="{{ data.get('endereco','') }}" placeholder="Rua, número, bairro, cidade/UF"></div>
       </div>
     </div>
 
     <div class="section">
       <h2 class="section-title"><span class="num">03</span> Serviço e Valores</h2>
       <div class="grid">
-        <div class="field full">
-          <label>Serviço / Proposta *</label>
-          <input name="servico" required value="{{ data.get('servico','') }}" placeholder="Ex.: Instalação, manutenção, consultoria...">
-        </div>
-        <div class="field full">
-          <label>Descrição Detalhada</label>
-          <textarea name="descricao" maxlength="900" placeholder="Detalhe o escopo...">{{ data.get('descricao','') }}</textarea>
-        </div>
-        <div class="field">
-          <label>Valor Total do Serviço *</label>
-          <div class="value-wrap"><span>R$</span><input id="valor" name="valor" required inputmode="decimal" value="{{ data.get('valor','') }}" placeholder="0,00"></div>
-        </div>
-        <div class="field">
-          <label>Desconto (opcional)</label>
-          <div class="value-wrap"><span>R$</span><input id="desconto" name="desconto" inputmode="decimal" value="{{ data.get('desconto','') }}" placeholder="0,00"></div>
-        </div>
-        <div class="field">
-          <label>Prazo de Execução</label>
-          <input name="prazo" value="{{ data.get('prazo','') }}" placeholder="Ex.: 3 dias úteis">
-        </div>
-        <div class="field">
-          <label>Validade da Proposta</label>
-          <input name="validade" value="{{ data.get('validade','7 dias') }}" placeholder="Ex.: 7 dias">
-        </div>
-        <div class="field">
-          <label>Forma de Pagamento</label>
-          <input name="pagamento" value="{{ data.get('pagamento','') }}" placeholder="Ex.: 50% entrada + 50% entrega">
-        </div>
-        <div class="field">
-          <label>Garantia Oferecida</label>
-          <input name="garantia" value="{{ data.get('garantia','') }}" placeholder="Ex.: 90 dias">
-        </div>
+        <div class="full"><label>Serviço / Proposta *</label><input name="servico" required value="{{ data.get('servico','') }}" placeholder="Ex.: Instalação, manutenção..."></div>
+        <div class="full"><label>Descrição Detalhada</label><textarea name="descricao" maxlength="900" placeholder="Detalhe o escopo...">{{ data.get('descricao','') }}</textarea></div>
+        <div><label>Valor Total *</label><div class="value-wrap"><span>R$</span><input name="valor" required inputmode="decimal" value="{{ data.get('valor','') }}" placeholder="0,00"></div></div>
+        <div><label>Desconto (opcional)</label><div class="value-wrap"><span>R$</span><input name="desconto" inputmode="decimal" value="{{ data.get('desconto','') }}" placeholder="0,00"></div></div>
+        <div><label>Prazo de Execução</label><input name="prazo" value="{{ data.get('prazo','') }}" placeholder="Ex.: 3 dias úteis"></div>
+        <div><label>Validade da Proposta</label><input name="validade" value="{{ data.get('validade','7 dias') }}" placeholder="Ex.: 7 dias"></div>
+        <div><label>Forma de Pagamento</label><input name="pagamento" value="{{ data.get('pagamento','') }}" placeholder="Ex.: 50% entrada + 50% entrega"></div>
+        <div><label>Garantia Oferecida</label><input name="garantia" value="{{ data.get('garantia','') }}" placeholder="Ex.: 90 dias"></div>
       </div>
 
       <div class="included">
-        <h3>✅ O que está incluído nesta proposta:</h3>
+        <h3>✅ O que está incluído:</h3>
         <ul>
-          <li>Execução completa do serviço conforme descrito</li>
+          <li>Execução completa conforme escopo</li>
           <li>Material e mão de obra qualificada</li>
           <li>Garantia de satisfação e qualidade</li>
-          <li>Assistência e suporte pós-serviço</li>
-          <li>Transparência total em cada etapa</li>
+          <li>Assistência pós-serviço</li>
+          <li>Transparência total</li>
         </ul>
       </div>
 
       <div class="diferenciais">
-        <div class="diferencial"><strong>🚀 Agilidade</strong><span>Prazos cumpridos com excelência</span></div>
-        <div class="diferencial"><strong>🛡️ Garantia Real</strong><span>Segurança para você e seu cliente</span></div>
-        <div class="diferencial"><strong>💎 Qualidade Premium</strong><span>PDF profissional que valoriza</span></div>
-        <div class="diferencial"><strong>🤝 Atendimento</strong><span>Sempre disponível para você</span></div>
+        <div class="diferencial"><strong>🚀 Agilidade</strong><span>Prazos cumpridos</span></div>
+        <div class="diferencial"><strong>🛡️ Garantia Real</strong><span>Segurança total</span></div>
+        <div class="diferencial"><strong>💎 Qualidade Premium</strong><span>PDF profissional</span></div>
+        <div class="diferencial"><strong>🤝 Atendimento</strong><span>Sempre disponível</span></div>
       </div>
     </div>
 
     <div class="section">
-      <h2 class="section-title"><span class="num">04</span> Observações e Condições</h2>
+      <h2 class="section-title"><span class="num">04</span> Observações</h2>
       <textarea name="observacoes" maxlength="700" placeholder="Informações adicionais...">{{ data.get('observacoes','') }}</textarea>
     </div>
 
     <div class="actions">
-      <button class="primary" type="submit" {% if bloquear %}disabled{% endif %}>✦ Gerar Proposta em PDF</button>
-      <button class="secondary" type="button" onclick="enviarWhatsApp()" {% if bloquear %}disabled{% endif %}>◉ Enviar pelo WhatsApp</button>
+      <button class="primary" type="submit" {% if bloquear %}disabled{% endif %}>✦ Gerar PDF</button>
+      <button class="secondary" type="button" onclick="enviarWhatsApp()" {% if bloquear %}disabled{% endif %}>◉ Enviar WhatsApp</button>
     </div>
   </form>
 
     <div class="social-proof">
       <div><strong>+5.000</strong>Propostas geradas</div>
       <div><strong>⭐ 5.0</strong>Avaliação média</div>
-      <div><strong>✅ Sem fidelidade</strong>Cancele quando quiser</div>
-      <div><strong>🔒 Pagamento seguro</strong>100% protegido</div>
+      <div><strong>Sem fidelidade</strong>Cancele quando quiser</div>
     </div>
 
     <div class="terms">
-      Ao usar esta ferramenta você concorda com os termos de uso. Plano R$10,00/mês — propostas ilimitadas. Sem fidelidade. Pagamento seguro via Pix/Mercado Pago.
+      Plano R$10,00/mês — ilimitado. Pagamento seguro via Pix. © 2026 Proposta Exclusiva
     </div>
   </div>
-</div>
-<div class="footer-note">
-  💎 Valorize seu serviço com uma proposta profissional. Feche mais, cobre mais! © 2026
 </div>
 </div>
 
@@ -532,7 +466,7 @@ def generate_pdf(data):
 
     header_left = [
         Paragraph(company, styles["BrandPro"]),
-        Paragraph(f"Proposta nº <b>{numero}</b> &nbsp;•&nbsp; Emitida em {data_emissao}", styles["TinyPro"])
+        Paragraph(f"Proposta nº <b>{numero}</b> • Emitida em {data_emissao}", styles["TinyPro"])
     ]
 
     header = Table([[header_left, Paragraph(contact or " ", styles["TinyPro"]), badge]],
@@ -547,7 +481,7 @@ def generate_pdf(data):
     story += [header, Spacer(1, 2*mm), HRFlowable(width="100%", thickness=1.5, color=gold), Spacer(1, 3*mm)]
 
     validade = pdf_text(data.get("validade") or "7 dias")
-    urgency_table = Table([[Paragraph(f"⏳ VALIDADE: {validade} — Condições especiais!", styles["UrgencyPro"])]], colWidths=[174*mm])
+    urgency_table = Table([[Paragraph(f"⏳ VALIDADE: {validade}", styles["UrgencyPro"])]], colWidths=[174*mm])
     urgency_table.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#fff2f2")), ("BOX", (0,0), (-1,-1), 0.8, colors.HexColor("#e5b0b0")), ("LEFTPADDING", (0,0), (-1,-1), 8), ("RIGHTPADDING", (0,0), (-1,-1), 8), ("TOPPADDING", (0,0), (-1,-1), 6), ("BOTTOMPADDING", (0,0), (-1,-1), 6)]))
     story += [urgency_table, Spacer(1, 4*mm)]
 
@@ -687,4 +621,87 @@ def index():
     usos_restantes = LIMITE_GRATIS - user.free_used
     return render_template_string(HTML, 
         data={}, bloquear=bloquear, usos_restantes=max(0, usos_restantes),
-        limite_gratis=LIMITE_GRATIS, plano
+        limite_gratis=LIMITE_GRATIS, link_pagamento=LINK_PAGAMENTO,
+        link_whatsapp_suporte=LINK_WHATSAPP_SUPORTE)
+
+@app.route("/gerar-pdf", methods=["POST"])
+def gerar_pdf():
+    if not can_use_free():
+        flash("Você atingiu o limite de propostas grátis! Assine o plano ilimitado por apenas R$ 10,00/mês.")
+        return redirect("/")
+    
+    data = request.form.to_dict()
+    try:
+        pdf, numero = generate_pdf(data)
+        register_use()  # Conta o uso
+    except ValueError as e:
+        flash(str(e))
+        return render_template_string(HTML, data=data, bloquear=False, usos_restantes=1,
+            limite_gratis=LIMITE_GRATIS, link_pagamento=LINK_PAGAMENTO,
+            link_whatsapp_suporte=LINK_WHATSAPP_SUPORTE), 400
+    
+    filename = f"proposta_{numero}.pdf"
+    return send_file(pdf, mimetype="application/pdf", as_attachment=True, download_name=filename)
+
+@app.route("/whatsapp", methods=["POST"])
+def whatsapp():
+    if not can_use_free():
+        flash("Assine o plano para enviar pelo WhatsApp! Apenas R$ 10,00/mês.")
+        return redirect("/")
+    
+    data = request.form.to_dict()
+    phone = clean_phone(data.get("whatsapp", ""))
+    if not phone:
+        flash("Informe o WhatsApp do cliente.")
+        return render_template_string(HTML, data=data, bloquear=False, usos_restantes=1,
+            limite_gratis=LIMITE_GRATIS, link_pagamento=LINK_PAGAMENTO,
+            link_whatsapp_suporte=LINK_WHATSAPP_SUPORTE), 400
+    
+    try:
+        valor = parse_money(data.get("valor"), "Valor do serviço")
+        desconto = parse_money(data.get("desconto"), "Desconto") if data.get("desconto") else 0.0
+        total = max(0.0, valor - desconto)
+    except ValueError as e:
+        flash(str(e))
+        return render_template_string(HTML, data=data, bloquear=False, usos_restantes=1,
+            limite_gratis=LIMITE_GRATIS, link_pagamento=LINK_PAGAMENTO,
+            link_whatsapp_suporte=LINK_WHATSAPP_SUPORTE), 400
+
+    text = (
+        f"Olá, {data.get('cliente','')}! 👋\n"
+        f"Segue a proposta da {data.get('empresa','')} para: {data.get('servico','')}.\n\n"
+        f"💰 Valor total: {money_br(total)}\n"
+        f"📅 Prazo: {data.get('prazo','a combinar')}\n"
+        f"⏳ Validade: {data.get('validade','7 dias')}\n"
+        f"🛡️ Garantia: {data.get('garantia','a combinar')}\n\n"
+        f"Agradeço pela confiança! Fico à disposição. 🤝"
+    )
+    return redirect("https://wa.me/" + phone + "?text=" + quote(text))
+
+@app.route("/ativar-assinatura", methods=["POST"])
+def ativar_assinatura():
+    # Em produção, você verifica o pagamento aqui
+    user = get_or_create_user()
+    user.is_subscribed = True
+    user.subscription_expires = datetime.utcnow() + timedelta(days=30)
+    db.session.commit()
+    flash("✅ Assinatura ativada! Agora você pode gerar propostas ilimitadas!")
+    return redirect("/")
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}
+
+# ============================================================
+# 📊 BANCO DE DADOS — CRIA TABELAS NA PRIMEIRA VEZ
+# ============================================================
+
+with app.app_context():
+    db.create_all()
+
+# ============================================================
+# ▶️ EXECUÇÃO
+# ============================================================
+
+if __name__ == "__main__":
+    port = int(os.environ.get
