@@ -23,12 +23,16 @@ import uuid
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "proposta-exclusiva-secret-2026")
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///propostas.db")
+# Banco SQLite em pasta que o Render consegue escrever
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    "DATABASE_URL",
+    "sqlite:////tmp/propostas.db"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # ============================================================
-# 📊 BANCO DE DADOS
+# 📊 MODELO DO BANCO DE DADOS
 # ============================================================
 
 class UserUsage(db.Model):
@@ -48,8 +52,7 @@ class UserUsage(db.Model):
 # ============================================================
 
 PLANO_VALOR = 10.00
-PLANO_NOME = "Plano Ilimitado"
-LIMITE_GRATIS = 1
+LIMITE_GRATIS = 1  # 1 uso grátis
 
 # 👇 TROCA PELO SEU LINK DE PAGAMENTO!
 LINK_PAGAMENTO = "https://mpago.la/SEU-CODIGO-AQUI"
@@ -71,7 +74,7 @@ HTML = """
 :root{
   --black:#0b0b0b;--gold:#b08d57;--gold2:#d6b77a;--gold-light:#f7f1e5;
   --ink:#171717;--muted:#737373;--line:#e5e0d7;--bg:#f4f2ee;--card:#fff;
-  --success:#00703c;--locked:#dc2626;
+  --locked:#dc2626;
 }
 body{
   background:radial-gradient(circle at 8% 0%,rgba(176,141,87,.13),transparent 30%),
@@ -317,12 +320,9 @@ button{border:0;border-radius:16px;padding:16px 20px;font-size:15px;font-weight:
     </div>
 
     <div class="terms">
-      Plano R$10,00/mês — propostas ilimitadas. Sem fidelidade. Pagamento seguro via Pix/Mercado Pago. © 2026 Proposta Exclusiva
+      Plano R$10,00/mês — propostas ilimitadas. Sem fidelidade. Pagamento seguro via Pix. © 2026 Proposta Exclusiva
     </div>
   </div>
-</div>
-<div class="footer-note">
-  💎 Valorize seu serviço com uma proposta profissional. Feche mais, cobre mais! © 2026
 </div>
 </div>
 
@@ -408,7 +408,7 @@ def short(value, max_chars=900):
     return value[:max_chars-3].rstrip() + "..." if len(value) > max_chars else value
 
 # ============================================================
-# 📄 PDF — PREMIUM
+# 📄 GERAR PDF
 # ============================================================
 
 def generate_pdf(data):
@@ -686,12 +686,23 @@ def whatsapp():
 def ativar_assinatura():
     user = get_or_create_user()
     user.is_subscribed = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    "DATABASE_URL", 
-    "sqlite:////tmp/propostas.db"
-)
-
     user.subscription_expires = datetime.utcnow() + timedelta(days=30)
     db.session.commit()
     flash("✅ Assinatura ativada! Agora você pode gerar propostas ilimitadas!")
-    return redirect
+    return redirect("/")
+
+# ============================================================
+# 📊 CRIAR TABELAS — CORRIGIDO
+# ============================================================
+
+with app.app_context():
+    db.create_all()
+    print("✅ Tabelas criadas/verificadas!")
+
+# ============================================================
+# ▶️ EXECUÇÃO
+# ============================================================
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.
