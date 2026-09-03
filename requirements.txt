@@ -1,6 +1,6 @@
-gradio>=4.0.0
-yfinance>=0.2.66
-pandas>=2.0.0
-numpy>=1.24.0
-plotly>=5.15.0
-openpyxl>=3.1.0
+gradio==5.49.1
+yfinance==0.2.66
+pandas==2.2.3
+numpy==1.26.4
+plotly==5.24.1
+openpyxl==3.1.5
