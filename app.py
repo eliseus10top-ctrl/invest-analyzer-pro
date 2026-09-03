@@ -1,6 +1,9 @@
 Perfeito. Vou montar uma versão standalone, pensada para o Render, sem Google Colab, sem IPython e sem depender de arquivos HTML externos.
 Ela terá:
-🇧🇷 Ações brasileiras
+
+titulo = "🇧🇷 Ações brasileiras"
+
+
 🇧🇷 FIIs
 🇺🇸 Ações dos EUA
 🔎 Busca automática de ticker
