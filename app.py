@@ -1,2056 +1,2952 @@
 # ================================================================
-# 🚀 INVEST ANALYZER PRO 7.0
-# Analisador de Ações e FIIs
-# Google Colab - VERSÃO COMPLETA EM UMA ÚNICA CÉLULA
+# 🚀 INVEST ANALYZER 5.0 — CARTEIRA REAL INTELIGENTE
+# ================================================================
+#
+# ✔ Cadastro da carteira real
+# ✔ Quantidade de ativos
+# ✔ Preço médio
+# ✔ Preço atual via Yahoo Finance
+# ✔ Patriimônio total
+# ✔ Lucro/prejuízo estimado
+# ✔ Dividend Yield
+# ✔ Score 0–100
+# ✔ Risco
+# ✔ Distribuição atual
+# ✔ Distribuição ideal
+# ✔ Rebalanceamento
+# ✔ Próximo aporte inteligente
+# ✔ Ranking
+# ✔ Pesquisa por ticker
+# ✔ Simulação
+# ✔ Gráficos
+# ✔ Exportação CSV
+#
 # ================================================================
 
-# ================================================================
-# 1. INSTALAÇÃO AUTOMÁTICA
-# ================================================================
-
-import sys
-import subprocess
-import importlib.util
-import warnings
-
-warnings.filterwarnings("ignore")
-
-
-def instalar(pacote):
-    try:
-        if importlib.util.find_spec(pacote) is None:
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", "-q", pacote]
-            )
-    except Exception as e:
-        print(f"⚠️ Não foi possível instalar {pacote}: {e}")
-
-
-for pacote in ["yfinance", "ipywidgets", "plotly", "openpyxl"]:
-    instalar(pacote)
-
-
-# ================================================================
-# 2. IMPORTAÇÕES
-# ================================================================
+!pip -q install -U yfinance pandas numpy matplotlib ipywidgets
 
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import ipywidgets as widgets
 
 from IPython.display import display, HTML, clear_output
+import warnings
+import os
+import math
 
-import plotly.graph_objects as go
-
+warnings.filterwarnings("ignore")
 
 # ================================================================
-# 3. CONFIGURAÇÃO
+# GOOGLE COLAB
 # ================================================================
 
-VERSAO = "7.0 PRO"
+try:
+    from google.colab import output
+    output.enable_custom_widget_manager()
+except:
+    pass
+
+# ================================================================
+# CONFIGURAÇÕES
+# ================================================================
 
 CACHE = {}
-ranking_atual = pd.DataFrame()
 
+CARTEIRA = pd.DataFrame(
+    columns=[
+        "Ticker",
+        "Tipo",
+        "Quantidade",
+        "Preço Médio"
+    ]
+)
+
+ULTIMO_RANKING = pd.DataFrame()
+ULTIMA_ANALISE = None
+ULTIMA_SUGESTAO = pd.DataFrame()
 
 # ================================================================
-# 4. LISTAS DE ATIVOS
+# LISTAS
 # ================================================================
 
 ACOES = [
-    "PETR4.SA",
-    "VALE3.SA",
-    "ITUB4.SA",
-    "BBAS3.SA",
-    "BBDC4.SA",
-    "WEGE3.SA",
-    "ABEV3.SA",
-    "EGIE3.SA",
-    "TAEE11.SA",
-    "BBSE3.SA",
-    "ITSA4.SA",
-    "CMIG4.SA",
-    "CPLE6.SA",
-    "VIVT3.SA",
-    "SAPR11.SA"
+    "PETR4","VALE3","ITUB4","BBAS3","BBDC4","ABEV3",
+    "WEGE3","PRIO3","SUZB3","JBSS3","ELET3","ELET6",
+    "RENT3","RADL3","EQTL3","VIVT3","CPLE6","CMIG4",
+    "TIMS3","SANB11","BBSE3","TAEE11","EGIE3","FLRY3",
+    "GGBR4","USIM5","EMBR3","LREN3","CSAN3","B3SA3"
 ]
-
 
 FIIS = [
-    "MXRF11.SA",
-    "HGLG11.SA",
-    "KNRI11.SA",
-    "BTLG11.SA",
-    "TRXF11.SA",
-    "XPLG11.SA",
-    "VISC11.SA",
-    "XPML11.SA",
-    "CPTS11.SA",
-    "RECR11.SA",
-    "HGRU11.SA",
-    "MALL11.SA"
+    "MXRF11","BTLG11","HGLG11","KNRI11","XPML11",
+    "VISC11","XPLG11","HGRU11","TRXF11","CPTS11",
+    "KNCR11","RECR11","VGIR11","RBRF11","BCFF11",
+    "MALL11","HSML11","HGRE11","PVBI11","JSRE11"
 ]
 
+TODOS = ACOES + FIIS
 
 # ================================================================
-# 5. ESTILO
+# FUNÇÕES BÁSICAS
 # ================================================================
 
-display(HTML("""
-<style>
+def norm(ticker):
 
-.ia-title {
-    font-size: 30px;
-    font-weight: bold;
-    margin-top: 10px;
-}
-
-.ia-subtitle {
-    color: #666;
-    font-size: 15px;
-    margin-bottom: 20px;
-}
-
-.ia-box {
-    background: #f7f7f7;
-    border: 1px solid #ddd;
-    border-radius: 14px;
-    padding: 18px;
-    margin: 12px 0;
-}
-
-.ia-card {
-    display: inline-block;
-    vertical-align: top;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 12px;
-    padding: 14px;
-    margin: 5px;
-    min-width: 135px;
-}
-
-.ia-label {
-    font-size: 12px;
-    color: #666;
-}
-
-.ia-value {
-    font-size: 20px;
-    font-weight: bold;
-    margin-top: 5px;
-}
-
-.ia-good {
-    color: #16833b;
-}
-
-.ia-medium {
-    color: #b06b00;
-}
-
-.ia-bad {
-    color: #c62828;
-}
-
-.ia-big {
-    font-size: 25px;
-    font-weight: bold;
-}
-
-</style>
-"""))
+    return str(ticker).upper().strip().replace(".SA","")
 
 
-display(HTML(f"""
-<div class="ia-title">📊 INVEST ANALYZER PRO {VERSAO}</div>
+def identificar_tipo(ticker):
 
-<div class="ia-subtitle">
-Análise automática de ações e FIIs • Indicadores • Risco • Nota • Ranking • Comparação
-</div>
-"""))
+    ticker = norm(ticker)
+
+    if ticker in FIIS:
+        return "FII"
+
+    return "AÇÃO"
 
 
-# ================================================================
-# 6. FUNÇÕES BÁSICAS
-# ================================================================
-
-def numero(valor, padrao=np.nan):
+def numero(x):
 
     try:
 
-        if valor is None:
-            return padrao
+        if x is None:
+            return np.nan
 
-        if isinstance(valor, str):
+        return float(x)
 
-            valor = (
-                valor
-                .replace("%", "")
-                .replace(",", ".")
-                .strip()
-            )
+    except:
 
-        valor = float(valor)
-
-        if np.isfinite(valor):
-            return valor
-
-    except Exception:
-        pass
-
-    return padrao
+        return np.nan
 
 
-def moeda(valor):
+def dinheiro(x):
 
-    if pd.isna(valor):
+    if pd.isna(x):
         return "N/D"
 
     return (
-        f"R$ {valor:,.2f}"
+        f"R$ {x:,.2f}"
         .replace(",", "X")
         .replace(".", ",")
-        .replace("X", ".")
+        .replace("X",".")
     )
 
 
-def numero_formatado(valor):
+def percentual(x):
 
-    if pd.isna(valor):
+    if pd.isna(x):
         return "N/D"
 
-    return (
-        f"{valor:,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
+    return f"{x:.2f}%".replace(".",",")
+
+
+def decimal(x):
+
+    if pd.isna(x):
+        return "N/D"
+
+    return f"{x:.2f}".replace(".",",")
+
+
+def obter_info(info,*chaves):
+
+    for chave in chaves:
+
+        try:
+
+            valor = info.get(chave,np.nan)
+
+            if valor is not None and not pd.isna(valor):
+
+                return valor
+
+        except:
+
+            pass
+
+    return np.nan
+
+
+# ================================================================
+# SCORE
+# ================================================================
+
+def score_linear(valor,minimo,maximo):
+
+    if pd.isna(valor):
+        return np.nan
+
+    return max(
+        0,
+        min(
+            100,
+            (valor-minimo) /
+            (maximo-minimo) *
+            100
+        )
     )
 
 
-def percentual(valor):
+def classificacao(score):
 
-    if pd.isna(valor):
+    if pd.isna(score):
+        return "⚪ SEM DADOS"
+
+    if score >= 85:
+        return "🟢 EXCELENTE"
+
+    if score >= 75:
+        return "🟢 MUITO BOM"
+
+    if score >= 65:
+        return "🟡 BOM"
+
+    if score >= 50:
+        return "🟠 REGULAR"
+
+    return "🔴 FRACO"
+
+
+def risco_por_score(score):
+
+    if pd.isna(score):
         return "N/D"
 
-    return f"{valor:.2f}%".replace(".", ",")
+    if score >= 80:
+        return "BAIXO"
+
+    if score >= 65:
+        return "MÉDIO"
+
+    return "ALTO"
 
 
-def ticker_limpo(ticker):
+# ================================================================
+# CRESCIMENTO
+# ================================================================
 
-    ticker = str(ticker).upper().strip()
+def crescimento(fin, nome):
 
-    ticker = ticker.replace(" ", "")
+    try:
+
+        if fin is None or fin.empty:
+            return np.nan
+
+        linha = None
+
+        for indice in fin.index:
+
+            if nome.lower() in str(indice).lower():
+
+                linha = fin.loc[indice]
+
+                break
+
+        if linha is None:
+            return np.nan
+
+        valores = pd.to_numeric(
+            linha,
+            errors="coerce"
+        ).dropna()
+
+        if len(valores) < 2:
+            return np.nan
+
+        valores = valores.sort_index()
+
+        inicial = valores.iloc[0]
+        final = valores.iloc[-1]
+
+        if inicial <= 0 or final <= 0:
+            return np.nan
+
+        anos = len(valores)-1
+
+        return (
+            (final/inicial)**(1/anos)-1
+        )*100
+
+    except:
+
+        return np.nan
+
+
+# ================================================================
+# DIVIDENDOS
+# ================================================================
+
+def analisar_dividendos(ativo):
+
+    try:
+
+        div = ativo.dividends
+
+        if div is None or len(div)==0:
+
+            return np.nan,0
+
+        div = div.dropna()
+
+        if len(div)==0:
+
+            return np.nan,0
+
+        ano_atual = pd.Timestamp.today().year
+
+        ultimos = div[
+            div.index.year >= ano_atual-4
+        ]
+
+        total = ultimos.sum()
+
+        anos = len(
+            ultimos.groupby(
+                ultimos.index.year
+            ).sum()
+        )
+
+        return total,anos
+
+    except:
+
+        return np.nan,0
+
+
+# ================================================================
+# ANÁLISE FUNDAMENTAL
+# ================================================================
+
+def analisar_ativo(ticker,forcar=False):
+
+    ticker = norm(ticker)
 
     if not ticker:
-        return ""
+        return None
 
-    if "." not in ticker:
-        ticker += ".SA"
+    if ticker in CACHE and not forcar:
 
-    return ticker
+        return CACHE[ticker].copy()
 
-
-def ticker_display(ticker):
-
-    return str(ticker).replace(".SA", "")
-
-
-# ================================================================
-# 7. OBJETO YFINANCE
-# ================================================================
-
-def obter_ativo(ticker):
-
-    ticker = ticker_limpo(ticker)
-
-    if ticker not in CACHE:
-        CACHE[ticker] = yf.Ticker(ticker)
-
-    return CACHE[ticker]
-
-
-# ================================================================
-# 8. BUSCAR DADOS
-# ================================================================
-
-def buscar_dados(ticker):
+    tipo = identificar_tipo(ticker)
 
     try:
 
-        ticker = ticker_limpo(ticker)
+        ativo = yf.Ticker(
+            ticker+".SA"
+        )
 
-        if not ticker:
-            return None, {}, pd.DataFrame()
-
-        ativo = obter_ativo(ticker)
+        # --------------------------------------------------------
+        # INFO
+        # --------------------------------------------------------
 
         try:
+
             info = ativo.info
-        except Exception:
+
+        except:
+
             info = {}
 
+        preco = obter_info(
+            info,
+            "currentPrice",
+            "regularMarketPrice",
+            "previousClose"
+        )
+
+        anterior = obter_info(
+            info,
+            "previousClose"
+        )
+
+        if (
+            not pd.isna(preco)
+            and not pd.isna(anterior)
+            and anterior != 0
+        ):
+
+            variacao = (
+                preco/anterior-1
+            )*100
+
+        else:
+
+            variacao=np.nan
+
+        dy = obter_info(
+            info,
+            "dividendYield"
+        )
+
+        if (
+            not pd.isna(dy)
+            and abs(dy)<1
+        ):
+
+            dy*=100
+
+        pl = obter_info(
+            info,
+            "trailingPE",
+            "forwardPE"
+        )
+
+        pvp = obter_info(
+            info,
+            "priceToBook"
+        )
+
+        roe = obter_info(
+            info,
+            "returnOnEquity"
+        )
+
+        if (
+            not pd.isna(roe)
+            and abs(roe)<2
+        ):
+
+            roe*=100
+
+        margem = obter_info(
+            info,
+            "profitMargins"
+        )
+
+        if (
+            not pd.isna(margem)
+            and abs(margem)<2
+        ):
+
+            margem*=100
+
+        divida = obter_info(
+            info,
+            "debtToEquity"
+        )
+
+        # --------------------------------------------------------
+        # HISTÓRICO
+        # --------------------------------------------------------
+
         try:
-            hist = ativo.history(
-                period="1y",
+
+            historico = ativo.history(
+                period="5y",
                 auto_adjust=False
             )
-        except Exception:
-            hist = pd.DataFrame()
 
-        return ativo, info, hist
+        except:
+
+            historico=pd.DataFrame()
+
+        if (
+            not historico.empty
+            and "Volume" in historico.columns
+        ):
+
+            liquidez = (
+                historico[
+                    "Volume"
+                ]
+                .tail(60)
+                .mean()
+            )
+
+        else:
+
+            liquidez=np.nan
+
+        # --------------------------------------------------------
+        # FINANCEIROS
+        # --------------------------------------------------------
+
+        try:
+
+            financeiros = ativo.financials
+
+        except:
+
+            financeiros=pd.DataFrame()
+
+        crescimento_lucro = crescimento(
+            financeiros,
+            "Net Income"
+        )
+
+        crescimento_receita = crescimento(
+            financeiros,
+            "Total Revenue"
+        )
+
+        # --------------------------------------------------------
+        # DIVIDENDOS
+        # --------------------------------------------------------
+
+        total_dividendos,anos_dividendos = \
+            analisar_dividendos(ativo)
+
+        # ========================================================
+        # SCORE AÇÕES
+        # ========================================================
+
+        if tipo=="AÇÃO":
+
+            # P/L
+            if pd.isna(pl):
+
+                s_pl=np.nan
+
+            elif 5<=pl<=12:
+
+                s_pl=100
+
+            elif pl<5:
+
+                s_pl=80
+
+            elif pl<=18:
+
+                s_pl=70
+
+            elif pl<=25:
+
+                s_pl=50
+
+            else:
+
+                s_pl=25
+
+            # P/VP
+            if pd.isna(pvp):
+
+                s_pvp=np.nan
+
+            elif .8<=pvp<=1.5:
+
+                s_pvp=100
+
+            elif pvp<.8:
+
+                s_pvp=85
+
+            elif pvp<=2:
+
+                s_pvp=75
+
+            elif pvp<=3:
+
+                s_pvp=50
+
+            else:
+
+                s_pvp=25
+
+            # ROE
+            s_roe = (
+                score_linear(
+                    roe,0,30
+                )
+                if not pd.isna(roe)
+                else np.nan
+            )
+
+            # DY
+            s_dy = (
+                score_linear(
+                    dy,0,15
+                )
+                if not pd.isna(dy)
+                else np.nan
+            )
+
+            # Lucro
+            s_lucro = (
+                score_linear(
+                    crescimento_lucro,
+                    -10,
+                    30
+                )
+                if not pd.isna(
+                    crescimento_lucro
+                )
+                else np.nan
+            )
+
+            # Receita
+            s_receita = (
+                score_linear(
+                    crescimento_receita,
+                    -10,
+                    25
+                )
+                if not pd.isna(
+                    crescimento_receita
+                )
+                else np.nan
+            )
+
+            # Margem
+            s_margem = (
+                score_linear(
+                    margem,
+                    0,
+                    30
+                )
+                if not pd.isna(margem)
+                else np.nan
+            )
+
+            # Dividendos
+            s_dividendos=min(
+                100,
+                anos_dividendos*20
+            )
+
+            # Liquidez
+            if pd.isna(liquidez):
+
+                s_liquidez=np.nan
+
+            elif liquidez>=10000000:
+
+                s_liquidez=100
+
+            elif liquidez>=5000000:
+
+                s_liquidez=90
+
+            elif liquidez>=1000000:
+
+                s_liquidez=75
+
+            elif liquidez>=300000:
+
+                s_liquidez=55
+
+            else:
+
+                s_liquidez=30
+
+            consistencia=0
+
+            if (
+                not pd.isna(crescimento_lucro)
+                and crescimento_lucro>0
+            ):
+
+                consistencia+=25
+
+            if (
+                not pd.isna(crescimento_receita)
+                and crescimento_receita>0
+            ):
+
+                consistencia+=25
+
+            if (
+                not pd.isna(roe)
+                and roe>10
+            ):
+
+                consistencia+=25
+
+            if (
+                not pd.isna(margem)
+                and margem>0
+            ):
+
+                consistencia+=25
+
+            pesos=[
+
+                (s_pl,10),
+                (s_pvp,8),
+                (s_roe,10),
+                (s_dy,10),
+                (s_lucro,15),
+                (s_receita,10),
+                (s_margem,10),
+                (s_dividendos,10),
+                (s_liquidez,5),
+                (consistencia,12)
+
+            ]
+
+        # ========================================================
+        # SCORE FII
+        # ========================================================
+
+        else:
+
+            s_dy = (
+                score_linear(
+                    dy,
+                    4,
+                    14
+                )
+                if not pd.isna(dy)
+                else np.nan
+            )
+
+            if pd.isna(pvp):
+
+                s_pvp=np.nan
+
+            elif .8<=pvp<=1.05:
+
+                s_pvp=100
+
+            elif pvp<.8:
+
+                s_pvp=90
+
+            elif pvp<=1.15:
+
+                s_pvp=80
+
+            elif pvp<=1.30:
+
+                s_pvp=55
+
+            else:
+
+                s_pvp=25
+
+            if pd.isna(liquidez):
+
+                s_liquidez=np.nan
+
+            elif liquidez>=5000000:
+
+                s_liquidez=100
+
+            elif liquidez>=1000000:
+
+                s_liquidez=90
+
+            elif liquidez>=500000:
+
+                s_liquidez=75
+
+            elif liquidez>=100000:
+
+                s_liquidez=55
+
+            else:
+
+                s_liquidez=25
+
+            s_dividendos=min(
+                100,
+                anos_dividendos*20
+            )
+
+            pesos=[
+
+                (s_dy,30),
+                (s_pvp,20),
+                (s_dividendos,20),
+                (s_liquidez,15),
+                (s_dividendos,15)
+
+            ]
+
+        # ========================================================
+        # SCORE FINAL
+        # ========================================================
+
+        soma=0
+        peso_total=0
+
+        for nota,peso in pesos:
+
+            if not pd.isna(nota):
+
+                soma+=nota*peso
+                peso_total+=peso
+
+        score = (
+            soma/peso_total
+            if peso_total>0
+            else np.nan
+        )
+
+        resultado={
+
+            "Ticker":ticker,
+            "Tipo":tipo,
+            "Preço":preco,
+            "Variação %":variacao,
+            "DY %":dy,
+            "P/L":pl,
+            "P/VP":pvp,
+            "ROE %":roe,
+            "Margem %":margem,
+            "Dívida/PL":divida,
+            "Crescimento Lucro %":
+                crescimento_lucro,
+            "Crescimento Receita %":
+                crescimento_receita,
+            "Dividendos 5 anos":
+                total_dividendos,
+            "Anos dividendos":
+                anos_dividendos,
+            "Liquidez":
+                liquidez,
+            "Score":
+                score,
+            "Risco":
+                risco_por_score(score),
+            "Classificação":
+                classificacao(score)
+        }
+
+        CACHE[ticker]=pd.Series(
+            resultado
+        )
+
+        return CACHE[ticker].copy()
 
     except Exception as erro:
 
-        print("Erro:", erro)
+        return pd.Series({
 
-        return None, {}, pd.DataFrame()
+            "Ticker":ticker,
+            "Tipo":tipo,
+            "Preço":np.nan,
+            "Variação %":np.nan,
+            "DY %":np.nan,
+            "P/L":np.nan,
+            "P/VP":np.nan,
+            "ROE %":np.nan,
+            "Margem %":np.nan,
+            "Dívida/PL":np.nan,
+            "Crescimento Lucro %":np.nan,
+            "Crescimento Receita %":np.nan,
+            "Dividendos 5 anos":np.nan,
+            "Anos dividendos":0,
+            "Liquidez":np.nan,
+            "Score":np.nan,
+            "Risco":"N/D",
+            "Classificação":"⚪ ERRO"
+        })
 
 
 # ================================================================
-# 9. EXTRAIR INDICADORES
+# ADICIONAR ATIVO
 # ================================================================
 
-def extrair_indicadores(ticker, info, hist):
+def adicionar_ativo():
 
-    ticker = ticker_limpo(ticker)
+    global CARTEIRA
 
-    # ------------------------------------------------------------
-    # PREÇO
-    # ------------------------------------------------------------
-
-    preco = numero(info.get("currentPrice"))
-
-    if pd.isna(preco):
-        preco = numero(info.get("regularMarketPrice"))
-
-    if pd.isna(preco) and hist is not None and not hist.empty:
-
-        try:
-            preco = numero(
-                hist["Close"].dropna().iloc[-1]
-            )
-        except Exception:
-            pass
-
-
-    # ------------------------------------------------------------
-    # DIVIDEND YIELD
-    # ------------------------------------------------------------
-
-    dy = numero(info.get("dividendYield"))
-
-    if not pd.isna(dy):
-
-        if dy < 1:
-            dy *= 100
-
-
-    # ------------------------------------------------------------
-    # P/L
-    # ------------------------------------------------------------
-
-    pl = numero(info.get("trailingPE"))
-
-    if pd.isna(pl):
-        pl = numero(info.get("forwardPE"))
-
-
-    # ------------------------------------------------------------
-    # P/VP
-    # ------------------------------------------------------------
-
-    pvp = numero(info.get("priceToBook"))
-
-
-    # ------------------------------------------------------------
-    # ROE
-    # ------------------------------------------------------------
-
-    roe = numero(info.get("returnOnEquity"))
-
-    if not pd.isna(roe) and abs(roe) <= 1:
-        roe *= 100
-
-
-    # ------------------------------------------------------------
-    # DÍVIDA
-    # ------------------------------------------------------------
-
-    divida = numero(info.get("debtToEquity"))
-
-
-    # ------------------------------------------------------------
-    # MARGEM
-    # ------------------------------------------------------------
-
-    margem = numero(info.get("profitMargins"))
-
-    if not pd.isna(margem) and abs(margem) <= 1:
-        margem *= 100
-
-
-    # ------------------------------------------------------------
-    # CRESCIMENTO
-    # ------------------------------------------------------------
-
-    crescimento = numero(info.get("revenueGrowth"))
-
-    if not pd.isna(crescimento) and abs(crescimento) <= 1:
-        crescimento *= 100
-
-
-    # ------------------------------------------------------------
-    # BETA
-    # ------------------------------------------------------------
-
-    beta = numero(info.get("beta"))
-
-
-    # ------------------------------------------------------------
-    # ROIC / RETORNO
-    # ------------------------------------------------------------
-
-    roic = numero(info.get("returnOnAssets"))
-
-    if not pd.isna(roic) and abs(roic) <= 1:
-        roic *= 100
-
-
-    # ------------------------------------------------------------
-    # MARKET CAP
-    # ------------------------------------------------------------
-
-    market_cap = numero(info.get("marketCap"))
-
-
-    # ------------------------------------------------------------
-    # NOME
-    # ------------------------------------------------------------
-
-    nome = (
-        info.get("longName")
-        or info.get("shortName")
-        or ticker
+    ticker=norm(
+        entrada_ticker.value
     )
 
+    quantidade=float(
+        entrada_quantidade.value
+    )
 
-    setor = info.get("sector") or "N/D"
+    preco_medio=float(
+        entrada_preco_medio.value
+    )
 
-    industria = info.get("industry") or "N/D"
+    if not ticker:
 
+        with saida_carteira:
+
+            print(
+                "⚠️ Digite um ticker."
+            )
+
+        return
+
+    if quantidade<=0:
+
+        with saida_carteira:
+
+            print(
+                "⚠️ A quantidade deve ser maior que zero."
+            )
+
+        return
+
+    if preco_medio<=0:
+
+        with saida_carteira:
+
+            print(
+                "⚠️ O preço médio deve ser maior que zero."
+            )
+
+        return
+
+    nova=pd.DataFrame([{
+
+        "Ticker":ticker,
+        "Tipo":identificar_tipo(ticker),
+        "Quantidade":quantidade,
+        "Preço Médio":preco_medio
+
+    }])
+
+    # Se já existe, soma posição
+    if ticker in CARTEIRA["Ticker"].values:
+
+        indice=CARTEIRA[
+            CARTEIRA["Ticker"]==ticker
+        ].index[0]
+
+        qtd_antiga=CARTEIRA.loc[
+            indice,
+            "Quantidade"
+        ]
+
+        pm_antigo=CARTEIRA.loc[
+            indice,
+            "Preço Médio"
+        ]
+
+        nova_qtd=qtd_antiga+quantidade
+
+        novo_pm=(
+
+            (
+                qtd_antiga*pm_antigo
+                +
+                quantidade*preco_medio
+            )
+            /
+            nova_qtd
+
+        )
+
+        CARTEIRA.loc[
+            indice,
+            "Quantidade"
+        ]=nova_qtd
+
+        CARTEIRA.loc[
+            indice,
+            "Preço Médio"
+        ]=novo_pm
+
+    else:
+
+        CARTEIRA=pd.concat(
+            [
+                CARTEIRA,
+                nova
+            ],
+            ignore_index=True
+        )
+
+    mostrar_carteira()
+
+
+# ================================================================
+# REMOVER ATIVO
+# ================================================================
+
+def remover_ativo():
+
+    global CARTEIRA
+
+    ticker=norm(
+        entrada_remover.value
+    )
+
+    if ticker in CARTEIRA["Ticker"].values:
+
+        CARTEIRA=CARTEIRA[
+            CARTEIRA["Ticker"]!=ticker
+        ].reset_index(drop=True)
+
+        mostrar_carteira()
+
+    else:
+
+        with saida_carteira:
+
+            clear_output(wait=True)
+
+            print(
+                "⚠️ Esse ativo não está na carteira."
+            )
+
+
+# ================================================================
+# MOSTRAR CARTEIRA
+# ================================================================
+
+def mostrar_carteira():
+
+    with saida_carteira:
+
+        clear_output(wait=True)
+
+        if CARTEIRA.empty:
+
+            print(
+                "📭 Sua carteira está vazia."
+            )
+
+            print(
+                "Adicione seu primeiro ativo acima."
+            )
+
+            return
+
+        dados=[]
+
+        patrimonio=0
+        custo_total=0
+
+        for _,linha in CARTEIRA.iterrows():
+
+            ticker=linha["Ticker"]
+
+            quantidade=linha["Quantidade"]
+
+            pm=linha["Preço Médio"]
+
+            d=analisar_ativo(ticker)
+
+            preco=d["Preço"]
+
+            if pd.isna(preco):
+
+                valor=np.nan
+                custo=np.nan
+                lucro=np.nan
+                rent=np.nan
+
+            else:
+
+                valor=quantidade*preco
+
+                custo=quantidade*pm
+
+                lucro=valor-custo
+
+                rent=(
+                    lucro/custo*100
+                    if custo!=0
+                    else np.nan
+                )
+
+                patrimonio+=valor
+                custo_total+=custo
+
+            dados.append({
+
+                "Ticker":ticker,
+                "Tipo":linha["Tipo"],
+                "Qtd":quantidade,
+                "Preço Médio":pm,
+                "Preço Atual":preco,
+                "Valor Atual":valor,
+                "Custo":custo,
+                "Lucro/Prejuízo":lucro,
+                "Rentabilidade %":rent,
+                "DY %":d["DY %"],
+                "Score":d["Score"],
+                "Risco":d["Risco"]
+
+            })
+
+        df=pd.DataFrame(dados)
+
+        valor_validos=df[
+            "Valor Atual"
+        ].notna()
+
+        patrimonio=df[
+            "Valor Atual"
+        ].sum()
+
+        custo_total=df[
+            "Custo"
+        ].sum()
+
+        lucro_total=(
+            patrimonio-custo_total
+        )
+
+        rent_total=(
+            lucro_total/
+            custo_total*100
+            if custo_total!=0
+            else np.nan
+        )
+
+        # Pesos
+        if patrimonio>0:
+
+            df["Peso %"]=(
+                df["Valor Atual"]/
+                patrimonio*100
+            )
+
+        else:
+
+            df["Peso %"]=np.nan
+
+        display(
+            HTML(f"""
+
+            <div style="
+            padding:18px;
+            border-radius:15px;
+            background:#f3f4f6;">
+
+            <h2>💼 Minha Carteira</h2>
+
+            <p>
+            💰 Patrimônio:
+            <b>{dinheiro(patrimonio)}</b>
+            </p>
+
+            <p>
+            💵 Custo total:
+            <b>{dinheiro(custo_total)}</b>
+            </p>
+
+            <p>
+            📈 Lucro/Prejuízo:
+            <b>{dinheiro(lucro_total)}</b>
+            </p>
+
+            <p>
+            📊 Rentabilidade:
+            <b>{percentual(rent_total)}</b>
+            </p>
+
+            </div>
+
+            """)
+        )
+
+        display(
+            df.style.format({
+
+                "Qtd":
+                    lambda x:
+                    f"{x:.2f}",
+
+                "Preço Médio":
+                    lambda x:
+                    dinheiro(x),
+
+                "Preço Atual":
+                    lambda x:
+                    dinheiro(x),
+
+                "Valor Atual":
+                    lambda x:
+                    dinheiro(x),
+
+                "Custo":
+                    lambda x:
+                    dinheiro(x),
+
+                "Lucro/Prejuízo":
+                    lambda x:
+                    dinheiro(x),
+
+                "Rentabilidade %":
+                    lambda x:
+                    percentual(x),
+
+                "DY %":
+                    lambda x:
+                    percentual(x),
+
+                "Score":
+                    lambda x:
+                    "N/D"
+                    if pd.isna(x)
+                    else f"{x:.1f}",
+
+                "Peso %":
+                    lambda x:
+                    percentual(x)
+
+            }).hide(axis="index")
+        )
+
+        # ========================================================
+        # GRÁFICO
+        # ========================================================
+
+        if patrimonio>0:
+
+            plt.figure(
+                figsize=(11,5)
+            )
+
+            plt.bar(
+                df["Ticker"],
+                df["Peso %"]
+            )
+
+            plt.title(
+                "📊 Distribuição atual da carteira"
+            )
+
+            plt.xlabel("Ativo")
+            plt.ylabel("Peso (%)")
+
+            plt.xticks(
+                rotation=45
+            )
+
+            plt.grid(
+                axis="y",
+                alpha=.25
+            )
+
+            plt.tight_layout()
+
+            plt.show()
+
+
+# ================================================================
+# DEFINIR METAS
+# ================================================================
+
+def metas_perfil(perfil):
+
+    if perfil=="CONSERVADOR":
+
+        return {
+
+            "RENDA FIXA":60,
+            "AÇÕES":15,
+            "FIIs":25
+
+        }
+
+    if perfil=="MODERADO":
+
+        return {
+
+            "RENDA FIXA":40,
+            "AÇÕES":30,
+            "FIIs":30
+
+        }
 
     return {
 
-        "ticker": ticker,
+        "RENDA FIXA":20,
+        "AÇÕES":50,
+        "FIIs":30
 
-        "nome": nome,
-
-        "setor": setor,
-
-        "industria": industria,
-
-        "preco": preco,
-
-        "dividend_yield": dy,
-
-        "pl": pl,
-
-        "pvp": pvp,
-
-        "roe": roe,
-
-        "divida": divida,
-
-        "margem": margem,
-
-        "crescimento": crescimento,
-
-        "beta": beta,
-
-        "roa": roic,
-
-        "market_cap": market_cap
     }
 
 
 # ================================================================
-# 10. PONTUAÇÃO - DIVIDENDOS
+# REBALANCEAMENTO
 # ================================================================
 
-def nota_dividendos(dy):
+def calcular_rebalanceamento():
 
-    if pd.isna(dy):
-        return np.nan
+    global ULTIMA_SUGESTAO
 
-    if dy >= 10:
-        return 10
-
-    if dy >= 8:
-        return 9.5
-
-    if dy >= 6:
-        return 8.5
-
-    if dy >= 4:
-        return 7
-
-    if dy >= 2:
-        return 5
-
-    return 3
-
-
-# ================================================================
-# 11. PONTUAÇÃO - ROE
-# ================================================================
-
-def nota_roe(roe):
-
-    if pd.isna(roe):
-        return np.nan
-
-    if roe >= 25:
-        return 10
-
-    if roe >= 20:
-        return 9
-
-    if roe >= 15:
-        return 8
-
-    if roe >= 10:
-        return 6
-
-    if roe >= 5:
-        return 4
-
-    return 2
-
-
-# ================================================================
-# 12. PONTUAÇÃO - P/L
-# ================================================================
-
-def nota_pl(pl):
-
-    if pd.isna(pl) or pl <= 0:
-        return np.nan
-
-    if pl <= 8:
-        return 10
-
-    if pl <= 12:
-        return 9
-
-    if pl <= 16:
-        return 8
-
-    if pl <= 22:
-        return 6
-
-    if pl <= 30:
-        return 4
-
-    return 2
-
-
-# ================================================================
-# 13. PONTUAÇÃO - P/VP
-# ================================================================
-
-def nota_pvp(pvp):
-
-    if pd.isna(pvp) or pvp <= 0:
-        return np.nan
-
-    if pvp <= 0.8:
-        return 10
-
-    if pvp <= 1.0:
-        return 9
-
-    if pvp <= 1.2:
-        return 8
-
-    if pvp <= 1.5:
-        return 6
-
-    if pvp <= 2:
-        return 4
-
-    return 2
-
-
-# ================================================================
-# 14. PONTUAÇÃO - DÍVIDA
-# ================================================================
-
-def nota_divida(divida):
-
-    if pd.isna(divida):
-        return np.nan
-
-    if divida <= 30:
-        return 10
-
-    if divida <= 60:
-        return 8.5
-
-    if divida <= 100:
-        return 7
-
-    if divida <= 150:
-        return 5
-
-    return 2
-
-
-# ================================================================
-# 15. PONTUAÇÃO - CRESCIMENTO
-# ================================================================
-
-def nota_crescimento(crescimento):
-
-    if pd.isna(crescimento):
-        return np.nan
-
-    if crescimento >= 20:
-        return 10
-
-    if crescimento >= 10:
-        return 8.5
-
-    if crescimento >= 5:
-        return 7
-
-    if crescimento >= 0:
-        return 5
-
-    return 2
-
-
-# ================================================================
-# 16. NOTA FINAL
-# ================================================================
-
-def calcular_nota_completa(d):
-
-    notas = []
-
-    pesos = []
-
-    # Dividendos
-    n = nota_dividendos(d["dividend_yield"])
-
-    if not pd.isna(n):
-        notas.append(n)
-        pesos.append(1.5)
-
-    # ROE
-    n = nota_roe(d["roe"])
-
-    if not pd.isna(n):
-        notas.append(n)
-        pesos.append(1.5)
-
-    # P/L
-    n = nota_pl(d["pl"])
-
-    if not pd.isna(n):
-        notas.append(n)
-        pesos.append(1.2)
-
-    # P/VP
-    n = nota_pvp(d["pvp"])
-
-    if not pd.isna(n):
-        notas.append(n)
-        pesos.append(1.2)
-
-    # Dívida
-    n = nota_divida(d["divida"])
-
-    if not pd.isna(n):
-        notas.append(n)
-        pesos.append(1.2)
-
-    # Crescimento
-    n = nota_crescimento(d["crescimento"])
-
-    if not pd.isna(n):
-        notas.append(n)
-        pesos.append(1.2)
-
-    if not notas:
-        return 0
-
-    nota = np.average(
-        notas,
-        weights=pesos
-    )
-
-    return round(
-        max(0, min(10, nota)),
-        1
-    )
-
-
-# ================================================================
-# 17. ANÁLISE DE RISCO
-# ================================================================
-
-def calcular_risco(d):
-
-    pontos = 0
-
-    beta = d["beta"]
-    divida = d["divida"]
-    pl = d["pl"]
-    crescimento = d["crescimento"]
-
-
-    # Beta
-
-    if not pd.isna(beta):
-
-        if beta >= 1.6:
-            pontos += 3
-
-        elif beta >= 1.2:
-            pontos += 2
-
-        elif beta >= 0.9:
-            pontos += 1
-
-
-    # Dívida
-
-    if not pd.isna(divida):
-
-        if divida > 150:
-            pontos += 3
-
-        elif divida > 100:
-            pontos += 2
-
-        elif divida > 60:
-            pontos += 1
-
-
-    # P/L negativo
-
-    if not pd.isna(pl):
-
-        if pl < 0:
-            pontos += 2
-
-
-    # Crescimento negativo
-
-    if not pd.isna(crescimento):
-
-        if crescimento < -10:
-            pontos += 2
-
-        elif crescimento < 0:
-            pontos += 1
-
-
-    if pontos >= 6:
-        return "ALTO"
-
-    if pontos >= 3:
-        return "MÉDIO"
-
-    return "BAIXO"
-
-
-# ================================================================
-# 18. CONCLUSÃO
-# ================================================================
-
-def conclusao(nota, risco):
-
-    if nota >= 8.5 and risco == "BAIXO":
-        return "MUITO FAVORÁVEL"
-
-    if nota >= 7.5 and risco != "ALTO":
-        return "FAVORÁVEL"
-
-    if nota >= 6:
-        return "ATENÇÃO / ANALISAR"
-
-    if nota >= 4:
-        return "NEUTRO"
-
-    return "DESFAVORÁVEL"
-
-
-# ================================================================
-# 19. ANÁLISE COMPLETA
-# ================================================================
-
-def analisar_ativo(ticker):
-
-    ativo, info, hist = buscar_dados(ticker)
-
-    if ativo is None:
-        return None
-
-    if not info:
-        return None
-
-    d = extrair_indicadores(
-        ticker,
-        info,
-        hist
-    )
-
-    d["nota"] = calcular_nota_completa(d)
-
-    d["risco"] = calcular_risco(d)
-
-    d["conclusao"] = conclusao(
-        d["nota"],
-        d["risco"]
-    )
-
-    return d
-
-
-# ================================================================
-# 20. CARD HTML
-# ================================================================
-
-def card(titulo, valor, classe=""):
-
-    return f"""
-    <div class="ia-card">
-
-        <div class="ia-label">
-            {titulo}
-        </div>
-
-        <div class="ia-value {classe}">
-            {valor}
-        </div>
-
-    </div>
-    """
-
-
-# ================================================================
-# 21. CLASSE DA NOTA
-# ================================================================
-
-def classe_nota(nota):
-
-    if nota >= 7.5:
-        return "ia-good"
-
-    if nota >= 5:
-        return "ia-medium"
-
-    return "ia-bad"
-
-
-# ================================================================
-# 22. CLASSE DO RISCO
-# ================================================================
-
-def classe_risco(risco):
-
-    if risco == "BAIXO":
-        return "ia-good"
-
-    if risco == "MÉDIO":
-        return "ia-medium"
-
-    return "ia-bad"
-
-
-# ================================================================
-# 23. MOSTRAR FICHA COMPLETA
-# ================================================================
-
-def mostrar_ficha(ticker):
-
-    ticker = ticker_limpo(ticker)
-
-    with saida:
+    with saida_rebalanceamento:
 
         clear_output(wait=True)
 
-        print(
-            f"🔎 Analisando {ticker_display(ticker)}..."
+        aporte=float(
+            aporte_rebalanceamento.value
         )
 
-        d = analisar_ativo(ticker)
+        perfil=perfil_rebalanceamento.value
 
-        if d is None:
+        metas=metas_perfil(
+            perfil
+        )
 
-            display(HTML("""
-            <div class="ia-box">
+        # --------------------------------------------------------
+        # CARTEIRA VAZIA
+        # --------------------------------------------------------
 
-            <h2>❌ Ativo não encontrado</h2>
+        if CARTEIRA.empty:
 
-            <p>
-            Não foi possível obter os dados desse ticker.
-            </p>
-
-            <p>
-            Exemplos:
-            PETR4 • VALE3 • ITUB4 • MXRF11 • BTLG11
-            </p>
-
-            </div>
-            """))
+            print(
+                "📭 Cadastre ativos primeiro."
+            )
 
             return
 
-
-        nota = d["nota"]
-
-        classe_n = classe_nota(nota)
-
-        classe_r = classe_risco(d["risco"])
-
-
         # --------------------------------------------------------
-        # FICHA
+        # PREÇOS
         # --------------------------------------------------------
 
-        html = f"""
+        dados=[]
 
-        <div class="ia-box">
+        for _,linha in CARTEIRA.iterrows():
 
-        <h2>
-        📋 {d["nome"]}
-        </h2>
+            ticker=linha["Ticker"]
 
-        <p>
-        <b>Ticker:</b>
-        {ticker_display(d["ticker"])}
-        </p>
+            d=analisar_ativo(ticker)
 
-        <p>
-        <b>Setor:</b>
-        {d["setor"]}
-        </p>
+            preco=d["Preço"]
 
-        <p>
-        <b>Indústria:</b>
-        {d["industria"]}
-        </p>
+            if pd.isna(preco):
+                continue
 
-        <hr>
+            valor=(
+                linha["Quantidade"]*
+                preco
+            )
 
-        {card(
-            "💰 Preço",
-            moeda(d["preco"])
-        )}
+            dados.append({
 
-        {card(
-            "💵 Dividend Yield",
-            percentual(d["dividend_yield"])
-        )}
+                "Ticker":ticker,
+                "Tipo":linha["Tipo"],
+                "Valor":valor,
+                "Score":d["Score"],
+                "DY":d["DY %"]
 
-        {card(
-            "⭐ Nota",
-            f'{nota}/10',
-            classe_n
-        )}
+            })
 
-        {card(
-            "⚠️ Risco",
-            d["risco"],
-            classe_r
-        )}
+        df=pd.DataFrame(dados)
 
-        <br>
+        if df.empty:
 
-        {card(
-            "P/L",
-            numero_formatado(d["pl"])
-        )}
+            print(
+                "❌ Não foi possível atualizar os preços."
+            )
 
-        {card(
-            "P/VP",
-            numero_formatado(d["pvp"])
-        )}
+            return
 
-        {card(
-            "ROE",
-            percentual(d["roe"])
-        )}
+        patrimonio=df[
+            "Valor"
+        ].sum()
 
-        {card(
-            "Dívida/PL",
-            numero_formatado(d["divida"])
-        )}
+        # --------------------------------------------------------
+        # PESO ATUAL
+        # --------------------------------------------------------
 
-        <br>
+        df["Peso Atual %"]=(
+            df["Valor"]/
+            patrimonio*100
+        )
 
-        {card(
-            "Margem",
-            percentual(d["margem"])
-        )}
+        # --------------------------------------------------------
+        # META DA CLASSE
+        # --------------------------------------------------------
 
-        {card(
-            "Crescimento",
-            percentual(d["crescimento"])
-        )}
+        df["Meta Classe %"]=df[
+            "Tipo"
+        ].map({
 
-        {card(
-            "Beta",
-            numero_formatado(d["beta"])
-        )}
+            "AÇÃO":metas["AÇÕES"],
+            "FII":metas["FIIs"]
 
-        {card(
-            "ROA",
-            percentual(d["roa"])
-        )}
+        })
 
-        <hr>
+        # --------------------------------------------------------
+        # DISTRIBUIÇÃO DA META ENTRE ATIVOS
+        # --------------------------------------------------------
 
-        <h2>
-        📌 CONCLUSÃO:
-        <span class="{classe_n}">
-        {d["conclusao"]}
-        </span>
-        </h2>
+        # Quanto cada ativo representa dentro da classe
 
-        </div>
+        for tipo in ["AÇÃO","FII"]:
 
-        """
+            indices=df[
+                df["Tipo"]==tipo
+            ].index
 
+            if len(indices)==0:
+                continue
 
-        display(HTML(html))
+            scores=df.loc[
+                indices,
+                "Score"
+            ].fillna(50)
 
+            scores=scores.clip(
+                lower=1
+            )
+
+            pesos=scores/scores.sum()
+
+            df.loc[
+                indices,
+                "Peso Meta %"
+            ]=(
+                pesos*
+                metas[
+                    "AÇÕES"
+                    if tipo=="AÇÃO"
+                    else "FIIs"
+                ]
+            )
+
+        # --------------------------------------------------------
+        # RENDA FIXA
+        # --------------------------------------------------------
+
+        renda_fixa_meta=metas[
+            "RENDA FIXA"
+        ]
+
+        # --------------------------------------------------------
+        # NECESSIDADE
+        # --------------------------------------------------------
+
+        df["Diferença %"]=(
+            df["Peso Meta %"]-
+            df["Peso Atual %"]
+        )
+
+        df["Necessidade R$"]=(
+            df["Diferença %"]/
+            100*
+            patrimonio
+        )
+
+        # --------------------------------------------------------
+        # NOVO APORTE
+        # --------------------------------------------------------
+
+        positivas=df[
+            df["Necessidade R$"]>0
+        ].copy()
+
+        if positivas.empty:
+
+            print(
+                "✅ Sua carteira está próxima das metas."
+            )
+
+            print(
+                "O próximo aporte pode ser direcionado "
+                "à classe mais abaixo da meta."
+            )
+
+            return
+
+        necessidade_total=positivas[
+            "Necessidade R$"
+        ].sum()
+
+        positivas["Aporte Sugerido"]=(
+            positivas["Necessidade R$"]/
+            necessidade_total*
+            aporte
+        )
+
+        # Não ultrapassar necessidade
+        positivas["Aporte Sugerido"]=np.minimum(
+            positivas["Aporte Sugerido"],
+            positivas["Necessidade R$"]
+        )
+
+        positivas=positivas.sort_values(
+            "Aporte Sugerido",
+            ascending=False
+        )
+
+        # --------------------------------------------------------
+        # RENDA FIXA
+        # --------------------------------------------------------
+
+        peso_rf_atual=0
+
+        valor_nao_classificado=0
+
+        peso_classes=df.groupby(
+            "Tipo"
+        )["Valor"].sum()
+
+        if patrimonio>0:
+
+            peso_acoes=(
+                peso_classes.get(
+                    "AÇÃO",0
+                )/
+                patrimonio*100
+            )
+
+            peso_fiis=(
+                peso_classes.get(
+                    "FII",0
+                )/
+                patrimonio*100
+            )
+
+        else:
+
+            peso_acoes=0
+            peso_fiis=0
+
+        # Como o sistema não tem cadastro de renda fixa,
+        # calcula o quanto deveria existir na meta.
+
+        necessidade_rf=max(
+            0,
+            (
+                renda_fixa_meta-
+                (100-peso_acoes-peso_fiis)
+            )
+        )
+
+        display(
+            HTML(f"""
+
+            <div style="
+            padding:18px;
+            border-radius:15px;
+            background:#f3f4f6;">
+
+            <h2>⚖️ REBALANCEAMENTO</h2>
+
+            <p>
+            Perfil:
+            <b>{perfil}</b>
+            </p>
+
+            <p>
+            Patrimônio analisado:
+            <b>{dinheiro(patrimonio)}</b>
+            </p>
+
+            <p>
+            Próximo aporte:
+            <b>{dinheiro(aporte)}</b>
+            </p>
+
+            </div>
+
+            """)
+        )
+
+        tabela=positivas[[
+
+            "Ticker",
+            "Tipo",
+            "Peso Atual %",
+            "Peso Meta %",
+            "Diferença %",
+            "Score",
+            "DY",
+            "Aporte Sugerido"
+
+        ]].copy()
+
+        tabela.rename(
+            columns={
+                "DY":"DY %"
+            },
+            inplace=True
+        )
+
+        display(
+            tabela.style.format({
+
+                "Peso Atual %":
+                    lambda x:
+                    percentual(x),
+
+                "Peso Meta %":
+                    lambda x:
+                    percentual(x),
+
+                "Diferença %":
+                    lambda x:
+                    percentual(x),
+
+                "Score":
+                    lambda x:
+                    "N/D"
+                    if pd.isna(x)
+                    else f"{x:.1f}",
+
+                "DY %":
+                    lambda x:
+                    percentual(x),
+
+                "Aporte Sugerido":
+                    lambda x:
+                    dinheiro(x)
+
+            }).hide(axis="index")
+        )
 
         # --------------------------------------------------------
         # GRÁFICO
         # --------------------------------------------------------
 
+        plt.figure(
+            figsize=(11,5)
+        )
+
+        x=np.arange(
+            len(tabela)
+        )
+
+        largura=.35
+
+        plt.bar(
+            x-largura/2,
+            tabela["Peso Atual %"],
+            largura,
+            label="Atual"
+        )
+
+        plt.bar(
+            x+largura/2,
+            tabela["Peso Meta %"],
+            largura,
+            label="Meta"
+        )
+
+        plt.xticks(
+            x,
+            tabela["Ticker"],
+            rotation=45
+        )
+
+        plt.ylabel(
+            "Peso (%)"
+        )
+
+        plt.title(
+            "⚖️ Peso atual × peso desejado"
+        )
+
+        plt.legend()
+
+        plt.grid(
+            axis="y",
+            alpha=.25
+        )
+
+        plt.tight_layout()
+
+        plt.show()
+
+        print(
+            "\n💡 Sugestão: priorize os ativos que estão "
+            "mais abaixo da meta, sempre considerando "
+            "se os fundamentos continuam adequados."
+        )
+
+        ULTIMA_SUGESTAO=positivas.copy()
+
+
+# ================================================================
+# PESQUISA POR TICKER
+# ================================================================
+
+def pesquisar_ticker():
+
+    global ULTIMA_ANALISE
+
+    with saida_pesquisa:
+
+        clear_output(wait=True)
+
+        ticker=norm(
+            pesquisa_ticker.value
+        )
+
+        if not ticker:
+
+            print(
+                "⚠️ Digite um ticker."
+            )
+
+            return
+
+        print(
+            f"⏳ Analisando {ticker}..."
+        )
+
+        d=analisar_ativo(
+            ticker,
+            forcar=True
+        )
+
+        ULTIMA_ANALISE=d.copy()
+
+        if d is None:
+
+            return
+
+        display(
+            HTML(f"""
+
+            <div style="
+            padding:20px;
+            border-radius:18px;
+            background:#f3f4f6;">
+
+            <h1>📊 {d['Ticker']}</h1>
+
+            <h2>
+            💰 {dinheiro(d['Preço'])}
+            </h2>
+
+            <p>
+            📈 Variação:
+            <b>{percentual(d['Variação %'])}</b>
+            </p>
+
+            <p>
+            💵 Dividend Yield:
+            <b>{percentual(d['DY %'])}</b>
+            </p>
+
+            <p>
+            ⭐ Score:
+            <b>{decimal(d['Score'])}/100</b>
+            </p>
+
+            <p>
+            🛡️ Risco:
+            <b>{d['Risco']}</b>
+            </p>
+
+            <h2>
+            {d['Classificação']}
+            </h2>
+
+            </div>
+
+            """)
+        )
+
+        indicadores=pd.DataFrame({
+
+            "Indicador":[
+
+                "Preço",
+                "DY",
+                "P/L",
+                "P/VP",
+                "ROE",
+                "Margem",
+                "Dívida/PL",
+                "Crescimento Lucro",
+                "Crescimento Receita",
+                "Score",
+                "Risco"
+
+            ],
+
+            "Valor":[
+
+                dinheiro(d["Preço"]),
+                percentual(d["DY %"]),
+                decimal(d["P/L"]),
+                decimal(d["P/VP"]),
+                percentual(d["ROE %"]),
+                percentual(d["Margem %"]),
+                decimal(d["Dívida/PL"]),
+                percentual(d["Crescimento Lucro %"]),
+                percentual(d["Crescimento Receita %"]),
+                decimal(d["Score"]),
+                d["Risco"]
+
+            ]
+
+        })
+
+        display(
+            indicadores
+        )
+
+        # ========================================================
+        # GRÁFICO
+        # ========================================================
+
         try:
 
-            ativo = obter_ativo(ticker)
+            ativo=yf.Ticker(
+                ticker+".SA"
+            )
 
-            hist = ativo.history(
-                period="1y",
+            hist=ativo.history(
+                period="5y",
                 auto_adjust=False
             )
 
-            if hist is not None and not hist.empty:
+            if not hist.empty:
 
-                fig = go.Figure()
-
-                fig.add_trace(
-                    go.Scatter(
-                        x=hist.index,
-                        y=hist["Close"],
-                        mode="lines",
-                        name=ticker_display(ticker)
-                    )
+                plt.figure(
+                    figsize=(11,5)
                 )
 
-                fig.update_layout(
-                    title=f"📈 Evolução - {ticker_display(ticker)} - 1 ano",
-                    xaxis_title="Data",
-                    yaxis_title="Preço",
-                    height=450
+                plt.plot(
+                    hist.index,
+                    hist["Close"]
                 )
 
-                fig.show()
+                plt.title(
+                    f"📈 {ticker} — Histórico de 5 anos"
+                )
 
-        except Exception as erro:
+                plt.xlabel(
+                    "Data"
+                )
 
-            print(
-                "⚠️ Gráfico indisponível:",
-                erro
-            )
+                plt.ylabel(
+                    "Preço"
+                )
 
+                plt.grid(
+                    alpha=.25
+                )
 
-# ================================================================
-# 24. CRIAR RANKING
-# ================================================================
+                plt.tight_layout()
 
-def criar_ranking(lista):
+                plt.show()
 
-    resultados = []
+        except:
 
-    for ticker in lista:
+            pass
 
-        try:
+        # ========================================================
+        # CONCLUSÃO
+        # ========================================================
 
-            d = analisar_ativo(ticker)
+        if not pd.isna(d["Score"]):
 
-            if d is not None:
+            if d["Score"]>=75:
 
-                resultados.append({
+                conclusao=(
+                    "🟢 ATIVO COM BONS INDICADORES"
+                )
 
-                    "Ticker":
-                        ticker_display(d["ticker"]),
+            elif d["Score"]>=60:
 
-                    "Preço":
-                        d["preco"],
+                conclusao=(
+                    "🟡 ATIVO PARA AVALIAÇÃO"
+                )
 
-                    "Dividend Yield":
-                        d["dividend_yield"],
+            else:
 
-                    "P/L":
-                        d["pl"],
-
-                    "P/VP":
-                        d["pvp"],
-
-                    "ROE":
-                        d["roe"],
-
-                    "Dívida/PL":
-                        d["divida"],
-
-                    "Crescimento":
-                        d["crescimento"],
-
-                    "Nota":
-                        d["nota"],
-
-                    "Risco":
-                        d["risco"],
-
-                    "Conclusão":
-                        d["conclusao"]
-                })
-
-        except Exception:
-            continue
-
-
-    if not resultados:
-        return pd.DataFrame()
-
-
-    df = pd.DataFrame(resultados)
-
-    df = df.sort_values(
-        "Nota",
-        ascending=False,
-        na_position="last"
-    )
-
-    return df.reset_index(drop=True)
-
-
-# ================================================================
-# 25. FORMATAR RANKING
-# ================================================================
-
-def formatar_ranking(df):
-
-    return (
-        df.style
-        .format({
-
-            "Preço":
-                lambda x: moeda(x),
-
-            "Dividend Yield":
-                lambda x: percentual(x),
-
-            "P/L":
-                lambda x: numero_formatado(x),
-
-            "P/VP":
-                lambda x: numero_formatado(x),
-
-            "ROE":
-                lambda x: percentual(x),
-
-            "Dívida/PL":
-                lambda x: numero_formatado(x),
-
-            "Crescimento":
-                lambda x: percentual(x),
-
-            "Nota":
-                lambda x: f"{x:.1f}"
-
-        })
-    )
-
-
-# ================================================================
-# 26. VER AÇÕES
-# ================================================================
-
-def mostrar_acoes(_):
-
-    global ranking_atual
-
-    with saida:
-
-        clear_output(wait=True)
-
-        print("⏳ Analisando ações...")
-
-        ranking_atual = criar_ranking(ACOES)
-
-        if ranking_atual.empty:
-
-            print("❌ Não foi possível criar o ranking.")
-
-            return
-
-
-        display(
-            HTML("""
-            <div class="ia-box">
-            <h2>🏆 RANKING DE AÇÕES</h2>
-            <p>
-            Ordenado automaticamente pela nota do INVEST ANALYZER PRO.
-            </p>
-            </div>
-            """)
-        )
-
-        display(
-            formatar_ranking(
-                ranking_atual
-            )
-        )
-
-
-# ================================================================
-# 27. VER FIIs
-# ================================================================
-
-def mostrar_fiis(_):
-
-    global ranking_atual
-
-    with saida:
-
-        clear_output(wait=True)
-
-        print("⏳ Analisando FIIs...")
-
-        ranking_atual = criar_ranking(FIIS)
-
-        if ranking_atual.empty:
-
-            print("❌ Não foi possível criar o ranking.")
-
-            return
-
-
-        display(
-            HTML("""
-            <div class="ia-box">
-            <h2>🏢 RANKING DE FIIs</h2>
-            <p>
-            Ranking baseado nos indicadores disponíveis.
-            </p>
-            </div>
-            """)
-        )
-
-        display(
-            formatar_ranking(
-                ranking_atual
-            )
-        )
-
-
-# ================================================================
-# 28. OPORTUNIDADES
-# ================================================================
-
-def mostrar_oportunidades(_):
-
-    global ranking_atual
-
-    with saida:
-
-        clear_output(wait=True)
-
-        print("⏳ Procurando oportunidades...")
-
-        lista = ACOES + FIIS
-
-        df = criar_ranking(lista)
-
-        if df.empty:
-
-            print("❌ Nenhum dado encontrado.")
-
-            return
-
-
-        oportunidades = df[
-            (df["Nota"] >= 7.5) &
-            (df["Risco"] != "ALTO")
-        ].copy()
-
-
-        display(
-            HTML("""
-            <div class="ia-box">
-
-            <h2>⭐ POSSÍVEIS OPORTUNIDADES</h2>
-
-            <p>
-            Ativos que atingiram os critérios automáticos
-            de nota e risco do sistema.
-            </p>
-
-            </div>
-            """)
-        )
-
-
-        if oportunidades.empty:
+                conclusao=(
+                    "🔴 EXIGE MAIOR CAUTELA"
+                )
 
             display(
-                HTML("""
-                <div class="ia-box">
+                HTML(f"""
 
-                <h3>🔎 Nenhum ativo atingiu os critérios.</h3>
+                <div style="
+                padding:15px;
+                border-radius:12px;
+                background:#eeeeee;">
+
+                <h3>{conclusao}</h3>
 
                 <p>
-                Isso não significa que não existam oportunidades.
-                Significa apenas que nenhum ativo da lista
-                atingiu os filtros atuais.
+                Essa classificação é baseada nos indicadores
+                disponíveis e não representa garantia de
+                desempenho futuro.
                 </p>
 
                 </div>
+
                 """)
             )
 
-        else:
-
-            ranking_atual = oportunidades
-
-            display(
-                formatar_ranking(
-                    oportunidades
-                )
-            )
-
 
 # ================================================================
-# 29. TOP 5
+# RANKING
 # ================================================================
 
-def mostrar_top5(_):
+def gerar_ranking():
 
-    global ranking_atual
+    global ULTIMO_RANKING
 
-    with saida:
+    with saida_ranking:
 
         clear_output(wait=True)
 
-        print("⏳ Calculando TOP 5...")
+        mercado=mercado_ranking.value
 
-        df = criar_ranking(
-            ACOES + FIIS
+        if mercado=="AÇÕES":
+
+            lista=ACOES
+
+        elif mercado=="FIIs":
+
+            lista=FIIS
+
+        else:
+
+            lista=TODOS
+
+        dados=[]
+
+        print(
+            "⏳ Gerando ranking..."
         )
 
-        if df.empty:
+        for i,ticker in enumerate(lista):
 
-            print("❌ Sem dados.")
-
-            return
-
-
-        ranking_atual = df.head(5).copy()
-
-
-        html = """
-        <div class="ia-box">
-
-        <h2>🏆 TOP 5 INVEST ANALYZER PRO</h2>
-
-        """
-
-        for i, row in ranking_atual.iterrows():
-
-            posicao = i + 1
-
-            html += f"""
-
-            <div class="ia-card">
-
-            <div class="ia-label">
-            {posicao}º LUGAR
-            </div>
-
-            <div class="ia-value">
-            {row["Ticker"]}
-            </div>
-
-            <div>
-            ⭐ Nota: {row["Nota"]:.1f}/10
-            </div>
-
-            <div>
-            ⚠️ Risco: {row["Risco"]}
-            </div>
-
-            </div>
-
-            """
-
-        html += "</div>"
-
-        display(
-            HTML(html)
-        )
-
-        display(
-            formatar_ranking(
-                ranking_atual
+            print(
+                f"\rAnalisando "
+                f"{ticker} "
+                f"({i+1}/{len(lista)})",
+                end=""
             )
-        )
 
-
-# ================================================================
-# 30. COMPARAR ATIVOS
-# ================================================================
-
-def comparar_ativos(ativos):
-
-    lista = []
-
-    for ticker in ativos:
-
-        try:
-
-            d = analisar_ativo(ticker)
+            d=analisar_ativo(ticker)
 
             if d is not None:
 
-                lista.append(d)
+                dados.append(
+                    d.to_dict()
+                )
 
-        except Exception:
-            continue
+        print()
 
-
-    if not lista:
-
-        return pd.DataFrame()
-
-
-    comparacao = []
-
-
-    for d in lista:
-
-        comparacao.append({
-
-            "Ticker":
-                ticker_display(d["ticker"]),
-
-            "Preço":
-                d["preco"],
-
-            "DY":
-                d["dividend_yield"],
-
-            "P/L":
-                d["pl"],
-
-            "P/VP":
-                d["pvp"],
-
-            "ROE":
-                d["roe"],
-
-            "Dívida/PL":
-                d["divida"],
-
-            "Crescimento":
-                d["crescimento"],
-
-            "Nota":
-                d["nota"],
-
-            "Risco":
-                d["risco"]
-
-        })
-
-
-    return pd.DataFrame(comparacao)
-
-
-# ================================================================
-# 31. MOSTRAR COMPARAÇÃO
-# ================================================================
-
-def mostrar_comparacao(_):
-
-    with saida:
-
-        clear_output(wait=True)
-
-        texto = campo_comparacao.value.strip()
-
-        if not texto:
+        if not dados:
 
             print(
-                "⚠️ Digite pelo menos dois tickers."
+                "❌ Não foi possível gerar o ranking."
             )
 
             return
 
+        df=pd.DataFrame(
+            dados
+        )
 
-        tickers = [
-            ticker_limpo(x)
-            for x in texto.split(",")
-            if x.strip()
+        df=df[
+            df["Score"].notna()
         ]
 
-
-        if len(tickers) < 2:
-
-            print(
-                "⚠️ Digite pelo menos dois ativos separados por vírgula."
-            )
-
-            return
-
-
-        print("⏳ Comparando ativos...")
-
-        df = comparar_ativos(tickers)
-
-
-        if df.empty:
-
-            print(
-                "❌ Não foi possível comparar os ativos."
-            )
-
-            return
-
-
-        display(
-            HTML("""
-            <div class="ia-box">
-
-            <h2>⚖️ COMPARAÇÃO DE ATIVOS</h2>
-
-            </div>
-            """)
+        df=df.sort_values(
+            [
+                "Score",
+                "DY %"
+            ],
+            ascending=False
         )
 
+        ULTIMO_RANKING=df.copy()
+
+        quantidade=int(
+            quantidade_ranking.value
+        )
+
+        top=df.head(
+            quantidade
+        )
+
+        tabela=top[[
+
+            "Ticker",
+            "Tipo",
+            "Preço",
+            "DY %",
+            "P/L",
+            "P/VP",
+            "ROE %",
+            "Score",
+            "Risco",
+            "Classificação"
+
+        ]].copy()
 
         display(
-            df.style
-            .format({
+            tabela.style.format({
 
                 "Preço":
-                    lambda x: moeda(x),
+                    lambda x:
+                    dinheiro(x),
 
-                "DY":
-                    lambda x: percentual(x),
+                "DY %":
+                    lambda x:
+                    percentual(x),
 
                 "P/L":
-                    lambda x: numero_formatado(x),
+                    lambda x:
+                    decimal(x),
 
                 "P/VP":
-                    lambda x: numero_formatado(x),
+                    lambda x:
+                    decimal(x),
 
-                "ROE":
-                    lambda x: percentual(x),
+                "ROE %":
+                    lambda x:
+                    percentual(x),
 
-                "Dívida/PL":
-                    lambda x: numero_formatado(x),
+                "Score":
+                    lambda x:
+                    f"{x:.1f}"
 
-                "Crescimento":
-                    lambda x: percentual(x),
-
-                "Nota":
-                    lambda x: f"{x:.1f}"
-
-            })
+            }).hide(axis="index")
         )
 
+        # ========================================================
+        # GRÁFICO
+        # ========================================================
 
-        # Melhor nota
-
-        melhor = df.sort_values(
-            "Nota",
-            ascending=False
-        ).iloc[0]
-
-
-        display(
-            HTML(f"""
-            <div class="ia-box">
-
-            <h3>
-            🏆 Melhor nota da comparação:
-            {melhor["Ticker"]}
-            </h3>
-
-            <p>
-            ⭐ Nota:
-            <b>{melhor["Nota"]:.1f}/10</b>
-            </p>
-
-            <p>
-            ⚠️ Risco:
-            <b>{melhor["Risco"]}</b>
-            </p>
-
-            </div>
-            """)
+        plt.figure(
+            figsize=(11,5)
         )
+
+        plt.bar(
+            top["Ticker"],
+            top["Score"]
+        )
+
+        plt.title(
+            "🏆 Ranking por Score"
+        )
+
+        plt.ylabel(
+            "Score"
+        )
+
+        plt.xlabel(
+            "Ativo"
+        )
+
+        plt.ylim(
+            0,
+            100
+        )
+
+        plt.xticks(
+            rotation=45
+        )
+
+        plt.grid(
+            axis="y",
+            alpha=.25
+        )
+
+        plt.tight_layout()
+
+        plt.show()
 
 
 # ================================================================
-# 32. ATUALIZAR
+# SIMULAÇÃO DE PATRIMÔNIO
 # ================================================================
 
-def atualizar(_):
+def simular_patrimonio():
 
-    with saida:
+    with saida_simulacao:
 
         clear_output(wait=True)
 
-        CACHE.clear()
-
-        display(
-            HTML("""
-            <div class="ia-box">
-
-            <h2>🔄 Dados atualizados!</h2>
-
-            <p>
-            O cache foi limpo.
-            Faça uma nova análise ou ranking.
-            </p>
-
-            </div>
-            """)
+        inicial=float(
+            simulacao_inicial.value
         )
 
+        aporte=float(
+            simulacao_aporte.value
+        )
 
-# ================================================================
-# 33. EXPORTAR CSV
-# ================================================================
+        anos=int(
+            simulacao_anos.value
+        )
 
-def exportar_csv(_):
+        taxa=float(
+            simulacao_taxa.value
+        )/100
 
-    with saida:
+        dy=float(
+            simulacao_dy.value
+        )/100
 
-        clear_output(wait=True)
+        meses=anos*12
 
-        if ranking_atual.empty:
+        taxa_mensal=(
+            (1+taxa)**(1/12)-1
+        )
 
-            print(
-                "⚠️ Primeiro gere um ranking."
+        patrimonio=inicial
+
+        total_aportado=inicial
+
+        resultados=[]
+
+        for mes in range(
+            1,
+            meses+1
+        ):
+
+            patrimonio=(
+                patrimonio*
+                (1+taxa_mensal)
+                +
+                aporte
             )
 
-            return
+            total_aportado+=aporte
 
+            if mes%12==0:
 
-        arquivo = "invest_analyzer_pro_7_ranking.csv"
+                ano=mes//12
 
-        ranking_atual.to_csv(
-            arquivo,
-            index=False,
-            encoding="utf-8-sig"
+                dividendos_ano=(
+                    patrimonio*dy
+                )
+
+                resultados.append({
+
+                    "Ano":ano,
+
+                    "Patrimônio":
+                        patrimonio,
+
+                    "Total aportado":
+                        total_aportado,
+
+                    "Rendimento":
+                        patrimonio-total_aportado,
+
+                    "Dividendos anuais estimados":
+                        dividendos_ano,
+
+                    "Dividendos mensais estimados":
+                        dividendos_ano/12
+
+                })
+
+        df=pd.DataFrame(
+            resultados
         )
 
+        display(
+            df.style.format({
+
+                "Patrimônio":
+                    lambda x:
+                    dinheiro(x),
+
+                "Total aportado":
+                    lambda x:
+                    dinheiro(x),
+
+                "Rendimento":
+                    lambda x:
+                    dinheiro(x),
+
+                "Dividendos anuais estimados":
+                    lambda x:
+                    dinheiro(x),
+
+                "Dividendos mensais estimados":
+                    lambda x:
+                    dinheiro(x)
+
+            }).hide(axis="index")
+        )
+
+        # ========================================================
+        # GRÁFICO
+        # ========================================================
+
+        plt.figure(
+            figsize=(11,5)
+        )
+
+        plt.plot(
+            df["Ano"],
+            df["Patrimônio"],
+            marker="o"
+        )
+
+        plt.title(
+            "📈 Evolução estimada do patrimônio"
+        )
+
+        plt.xlabel(
+            "Ano"
+        )
+
+        plt.ylabel(
+            "Patrimônio"
+        )
+
+        plt.grid(
+            alpha=.25
+        )
+
+        plt.tight_layout()
+
+        plt.show()
+
+        final=patrimonio
+
+        lucro=(
+            final-total_aportado
+        )
+
+        renda_mensal=(
+            final*dy/12
+        )
 
         display(
             HTML(f"""
-            <div class="ia-box">
 
-            <h2>✅ CSV criado</h2>
+            <div style="
+            padding:20px;
+            border-radius:15px;
+            background:#f3f4f6;">
+
+            <h2>🎯 RESULTADO FINAL</h2>
 
             <p>
-            Arquivo:
-            <b>{arquivo}</b>
+            Patrimônio:
+            <b>{dinheiro(final)}</b>
+            </p>
+
+            <p>
+            Total aportado:
+            <b>{dinheiro(total_aportado)}</b>
+            </p>
+
+            <p>
+            Rendimentos:
+            <b>{dinheiro(lucro)}</b>
+            </p>
+
+            <p>
+            Dividendos mensais estimados:
+            <b>{dinheiro(renda_mensal)}</b>
             </p>
 
             </div>
+
             """)
         )
 
-
-# ================================================================
-# 34. EXPORTAR EXCEL
-# ================================================================
-
-def exportar_excel(_):
-
-    with saida:
-
-        clear_output(wait=True)
-
-        if ranking_atual.empty:
-
-            print(
-                "⚠️ Primeiro gere um ranking."
-            )
-
-            return
-
-
-        arquivo = "invest_analyzer_pro_7_ranking.xlsx"
-
-        ranking_atual.to_excel(
-            arquivo,
-            index=False
-        )
-
-
-        display(
-            HTML(f"""
-            <div class="ia-box">
-
-            <h2>✅ Excel criado</h2>
-
-            <p>
-            Arquivo:
-            <b>{arquivo}</b>
-            </p>
-
-            </div>
-            """)
+        print(
+            "\n⚠️ A rentabilidade e os dividendos usados "
+            "na simulação são hipóteses editáveis."
         )
 
 
 # ================================================================
-# 35. PESQUISA
+# EXPORTAR CARTEIRA
 # ================================================================
 
-campo_ticker = widgets.Text(
+def exportar_carteira():
+
+    if CARTEIRA.empty:
+
+        print(
+            "⚠️ Carteira vazia."
+        )
+
+        return
+
+    caminho=(
+        "/content/"
+        "minha_carteira_5_0.csv"
+    )
+
+    CARTEIRA.to_csv(
+        caminho,
+        index=False,
+        encoding="utf-8-sig"
+    )
+
+    print(
+        "✅ Arquivo criado:"
+    )
+
+    print(caminho)
+
+    try:
+
+        from google.colab import files
+
+        files.download(
+            caminho
+        )
+
+    except:
+
+        pass
+
+
+# ================================================================
+# EXPORTAR SUGESTÃO
+# ================================================================
+
+def exportar_sugestao():
+
+    if ULTIMA_SUGESTAO.empty:
+
+        print(
+            "⚠️ Calcule o rebalanceamento primeiro."
+        )
+
+        return
+
+    caminho=(
+        "/content/"
+        "proximo_aporte_5_0.csv"
+    )
+
+    ULTIMA_SUGESTAO.to_csv(
+        caminho,
+        index=False,
+        encoding="utf-8-sig"
+    )
+
+    try:
+
+        from google.colab import files
+
+        files.download(
+            caminho
+        )
+
+    except:
+
+        pass
+
+    print(
+        "✅ Sugestão exportada."
+    )
+
+
+# ================================================================
+# EXPORTAR RANKING
+# ================================================================
+
+def exportar_ranking():
+
+    if ULTIMO_RANKING.empty:
+
+        print(
+            "⚠️ Gere o ranking primeiro."
+        )
+
+        return
+
+    caminho=(
+        "/content/"
+        "ranking_5_0.csv"
+    )
+
+    ULTIMO_RANKING.to_csv(
+        caminho,
+        index=False,
+        encoding="utf-8-sig"
+    )
+
+    try:
+
+        from google.colab import files
+
+        files.download(
+            caminho
+        )
+
+    except:
+
+        pass
+
+    print(
+        "✅ Ranking exportado."
+    )
+
+
+# ================================================================
+# INTERFACE
+# ================================================================
+
+titulo=widgets.HTML("""
+
+<div style="
+background:#111827;
+color:white;
+padding:25px;
+border-radius:18px;
+margin-bottom:15px;">
+
+<h1>🚀 INVEST ANALYZER 5.0</h1>
+
+<h3>
+Carteira Real Inteligente
+</h3>
+
+<p>
+Análise • Score • Rebalanceamento • Aportes • Simulação
+</p>
+
+</div>
+
+""")
+
+
+# ================================================================
+# ABA MINHA CARTEIRA
+# ================================================================
+
+entrada_ticker=widgets.Text(
+
     value="PETR4",
-    placeholder="Ex.: PETR4",
-    description="Ticker:",
-    layout=widgets.Layout(
-        width="340px"
-    )
+
+    description="Ticker:"
+
 )
 
+entrada_quantidade=widgets.FloatText(
 
-botao_analisar = widgets.Button(
-    description="🔎 ANALISAR",
-    button_style="primary",
-    layout=widgets.Layout(
-        width="130px"
-    )
+    value=10,
+
+    description="Quantidade:"
+
 )
 
+entrada_preco_medio=widgets.FloatText(
 
-# ================================================================
-# 36. COMPARAÇÃO
-# ================================================================
+    value=30,
 
-campo_comparacao = widgets.Text(
-    value="PETR4,VALE3,ITUB4",
-    placeholder="PETR4,VALE3,ITUB4",
-    description="Comparar:",
-    layout=widgets.Layout(
-        width="430px"
-    )
+    description="Preço médio:"
+
 )
 
+botao_adicionar=widgets.Button(
 
-botao_comparar = widgets.Button(
-    description="⚖️ COMPARAR",
-    button_style="primary",
-    layout=widgets.Layout(
-        width="140px"
-    )
+    description="➕ Adicionar",
+
+    button_style="primary"
+
 )
 
+entrada_remover=widgets.Text(
 
-# ================================================================
-# 37. BOTÕES
-# ================================================================
+    description="Remover:"
 
-botao_atualizar = widgets.Button(
-    description="🔄 Atualizar",
-    layout=widgets.Layout(
-        width="125px"
-    )
 )
 
+botao_remover=widgets.Button(
 
-botao_acoes = widgets.Button(
-    description="📈 Ver Ações",
-    layout=widgets.Layout(
-        width="130px"
-    )
+    description="🗑️ Remover",
+
+    button_style="danger"
+
 )
 
+botao_atualizar=widgets.Button(
 
-botao_fiis = widgets.Button(
-    description="🏢 Ver FIIs",
-    layout=widgets.Layout(
-        width="130px"
-    )
+    description="🔄 Atualizar preços",
+
+    button_style="warning"
+
 )
 
+botao_exportar=widgets.Button(
 
-botao_oportunidades = widgets.Button(
-    description="⭐ Oportunidades",
-    layout=widgets.Layout(
-        width="155px"
-    )
+    description="📥 Exportar CSV",
+
+    button_style="success"
+
 )
 
+saida_carteira=widgets.Output()
 
-botao_top5 = widgets.Button(
-    description="🏆 TOP 5",
-    layout=widgets.Layout(
-        width="110px"
-    )
+
+botao_adicionar.on_click(
+    lambda b:
+    adicionar_ativo()
 )
 
-
-botao_csv = widgets.Button(
-    description="📄 CSV",
-    layout=widgets.Layout(
-        width="100px"
-    )
+botao_remover.on_click(
+    lambda b:
+    remover_ativo()
 )
-
-
-botao_excel = widgets.Button(
-    description="📊 Excel",
-    layout=widgets.Layout(
-        width="110px"
-    )
-)
-
-
-# ================================================================
-# 38. ÁREA DE SAÍDA
-# ================================================================
-
-saida = widgets.Output()
-
-
-# ================================================================
-# 39. EVENTOS
-# ================================================================
-
-def evento_analisar(_):
-
-    mostrar_ficha(
-        campo_ticker.value
-    )
-
-
-botao_analisar.on_click(
-    evento_analisar
-)
-
 
 botao_atualizar.on_click(
-    atualizar
+    lambda b:
+    mostrar_carteira()
+)
+
+botao_exportar.on_click(
+    lambda b:
+    exportar_carteira()
 )
 
 
-botao_acoes.on_click(
-    mostrar_acoes
-)
+aba_carteira=widgets.VBox([
 
+    widgets.HTML(
+        "<h2>💼 Minha Carteira Real</h2>"
+    ),
 
-botao_fiis.on_click(
-    mostrar_fiis
-)
-
-
-botao_oportunidades.on_click(
-    mostrar_oportunidades
-)
-
-
-botao_top5.on_click(
-    mostrar_top5
-)
-
-
-botao_comparar.on_click(
-    mostrar_comparacao
-)
-
-
-botao_csv.on_click(
-    exportar_csv
-)
-
-
-botao_excel.on_click(
-    exportar_excel
-)
-
-
-# ================================================================
-# 40. DASHBOARD
-# ================================================================
-
-display(
     widgets.HBox([
-        campo_ticker,
-        botao_analisar
-    ])
-)
+        entrada_ticker,
+        entrada_quantidade,
+        entrada_preco_medio
+    ]),
 
-
-display(
     widgets.HBox([
-        campo_comparacao,
-        botao_comparar
-    ])
-)
-
-
-display(
-    widgets.HBox([
+        botao_adicionar,
+        entrada_remover,
+        botao_remover,
         botao_atualizar,
-        botao_acoes,
-        botao_fiis,
-        botao_oportunidades
-    ])
+        botao_exportar
+    ]),
+
+    saida_carteira
+
+])
+
+
+# ================================================================
+# ABA REBALANCEAMENTO
+# ================================================================
+
+perfil_rebalanceamento=widgets.Dropdown(
+
+    options=[
+        "CONSERVADOR",
+        "MODERADO",
+        "ARROJADO"
+    ],
+
+    value="MODERADO",
+
+    description="Perfil:"
+
+)
+
+aporte_rebalanceamento=widgets.FloatText(
+
+    value=500,
+
+    description="Próximo aporte:"
+
+)
+
+botao_rebalancear=widgets.Button(
+
+    description="⚖️ Calcular aporte",
+
+    button_style="primary"
+
+)
+
+botao_exportar_sugestao=widgets.Button(
+
+    description="📥 Exportar",
+
+    button_style="success"
+
+)
+
+saida_rebalanceamento=widgets.Output()
+
+
+botao_rebalancear.on_click(
+    lambda b:
+    calcular_rebalanceamento()
+)
+
+botao_exportar_sugestao.on_click(
+    lambda b:
+    exportar_sugestao()
 )
 
 
-display(
+aba_rebalanceamento=widgets.VBox([
+
+    widgets.HTML(
+        "<h2>⚖️ Próximo aporte inteligente</h2>"
+    ),
+
     widgets.HBox([
-        botao_top5,
-        botao_csv,
-        botao_excel
-    ])
+        perfil_rebalanceamento,
+        aporte_rebalanceamento
+    ]),
+
+    widgets.HBox([
+        botao_rebalancear,
+        botao_exportar_sugestao
+    ]),
+
+    saida_rebalanceamento
+
+])
+
+
+# ================================================================
+# ABA PESQUISA
+# ================================================================
+
+pesquisa_ticker=widgets.Text(
+
+    value="PETR4",
+
+    description="Ticker:"
+
 )
 
+botao_pesquisar=widgets.Button(
+
+    description="🔎 Pesquisar",
+
+    button_style="primary"
+
+)
+
+saida_pesquisa=widgets.Output()
+
+
+botao_pesquisar.on_click(
+    lambda b:
+    pesquisar_ticker()
+)
+
+
+aba_pesquisa=widgets.VBox([
+
+    widgets.HTML(
+        "<h2>🔎 Ficha completa do ativo</h2>"
+    ),
+
+    widgets.HBox([
+        pesquisa_ticker,
+        botao_pesquisar
+    ]),
+
+    saida_pesquisa
+
+])
+
+
+# ================================================================
+# ABA RANKING
+# ================================================================
+
+mercado_ranking=widgets.Dropdown(
+
+    options=[
+        "TODOS",
+        "AÇÕES",
+        "FIIs"
+    ],
+
+    value="TODOS",
+
+    description="Mercado:"
+
+)
+
+quantidade_ranking=widgets.IntSlider(
+
+    value=10,
+
+    min=5,
+
+    max=30,
+
+    step=5,
+
+    description="Top:"
+
+)
+
+botao_gerar_ranking=widgets.Button(
+
+    description="🏆 Gerar ranking",
+
+    button_style="primary"
+
+)
+
+botao_exportar_rank=widgets.Button(
+
+    description="📥 Exportar CSV",
+
+    button_style="success"
+
+)
+
+saida_ranking=widgets.Output()
+
+
+botao_gerar_ranking.on_click(
+    lambda b:
+    gerar_ranking()
+)
+
+botao_exportar_rank.on_click(
+    lambda b:
+    exportar_ranking()
+)
+
+
+aba_ranking=widgets.VBox([
+
+    widgets.HTML(
+        "<h2>🏆 Ranking de ativos</h2>"
+    ),
+
+    widgets.HBox([
+        mercado_ranking,
+        quantidade_ranking
+    ]),
+
+    widgets.HBox([
+        botao_gerar_ranking,
+        botao_exportar_rank
+    ]),
+
+    saida_ranking
+
+])
+
+
+# ================================================================
+# ABA SIMULAÇÃO
+# ================================================================
+
+simulacao_inicial=widgets.FloatText(
+
+    value=0,
+
+    description="Inicial:"
+
+)
+
+simulacao_aporte=widgets.FloatText(
+
+    value=500,
+
+    description="Aporte/mês:"
+
+)
+
+simulacao_anos=widgets.IntSlider(
+
+    value=20,
+
+    min=1,
+
+    max=30,
+
+    step=1,
+
+    description="Anos:"
+
+)
+
+simulacao_taxa=widgets.FloatSlider(
+
+    value=10,
+
+    min=1,
+
+    max=20,
+
+    step=.5,
+
+    description="Taxa anual:"
+
+)
+
+simulacao_dy=widgets.FloatSlider(
+
+    value=7,
+
+    min=0,
+
+    max=15,
+
+    step=.5,
+
+    description="DY:"
+
+)
+
+botao_simular=widgets.Button(
+
+    description="📈 Simular",
+
+    button_style="primary"
+
+)
+
+saida_simulacao=widgets.Output()
+
+
+botao_simular.on_click(
+    lambda b:
+    simular_patrimonio()
+)
+
+
+aba_simulacao=widgets.VBox([
+
+    widgets.HTML(
+        "<h2>📈 Simulador de patrimônio</h2>"
+    ),
+
+    widgets.HBox([
+        simulacao_inicial,
+        simulacao_aporte
+    ]),
+
+    widgets.HBox([
+        simulacao_anos,
+        simulacao_taxa,
+        simulacao_dy
+    ]),
+
+    botao_simular,
+
+    saida_simulacao
+
+])
+
+
+# ================================================================
+# ABA METODOLOGIA
+# ================================================================
+
+aba_metodologia=widgets.HTML("""
+
+<h2>🧠 Como funciona o sistema</h2>
+
+<h3>⭐ Score</h3>
+
+<p>
+O Score varia de <b>0 a 100</b> e utiliza indicadores
+fundamentalistas disponíveis.
+</p>
+
+<h3>⚖️ Perfis</h3>
+
+<p>
+<b>Conservador</b><br>
+60% Renda Fixa • 25% FIIs • 15% Ações
+</p>
+
+<p>
+<b>Moderado</b><br>
+40% Renda Fixa • 30% FIIs • 30% Ações
+</p>
+
+<p>
+<b>Arrojado</b><br>
+20% Renda Fixa • 30% FIIs • 50% Ações
+</p>
+
+<h3>💰 Próximo aporte</h3>
+
+<p>
+O sistema verifica a diferença entre o peso atual
+e o peso desejado e prioriza os ativos que estão
+mais abaixo da meta.
+</p>
+
+<h3>📈 Simulação</h3>
+
+<p>
+A simulação usa uma taxa anual definida por você.
+Ela é uma hipótese matemática, não uma previsão.
+</p>
+
+<hr>
+
+<h3>⚠️ IMPORTANTE</h3>
+
+<p>
+Este sistema não garante lucro nem prevê o futuro.
+Preços, dividendos, lucros e indicadores podem mudar.
+</p>
+
+<p>
+Antes de investir, avalie os ativos e seus riscos.
+</p>
+
+""")
+
+
+# ================================================================
+# ABAS
+# ================================================================
+
+abas=widgets.Tab(
+
+    children=[
+
+        aba_carteira,
+        aba_rebalanceamento,
+        aba_pesquisa,
+        aba_ranking,
+        aba_simulacao,
+        aba_metodologia
+
+    ]
+
+)
+
+abas.set_title(
+    0,
+    "💼 Carteira"
+)
+
+abas.set_title(
+    1,
+    "⚖️ Aporte"
+)
+
+abas.set_title(
+    2,
+    "🔎 Ativo"
+)
+
+abas.set_title(
+    3,
+    "🏆 Ranking"
+)
+
+abas.set_title(
+    4,
+    "📈 Simulação"
+)
+
+abas.set_title(
+    5,
+    "🧠 Metodologia"
+)
+
+
+# ================================================================
+# INICIAR
+# ================================================================
 
 display(
-    saida
+    titulo,
+    abas
 )
 
+print(
+    "✅ INVEST ANALYZER 5.0 iniciado!"
+)
+
+print(
+    "Comece pela aba 💼 Carteira."
+)
 
 # ================================================================
-# 41. MENSAGEM INICIAL
+# PESQUISA INICIAL
 # ================================================================
 
-with saida:
-
-    display(
-        HTML("""
-        <div class="ia-box">
-
-        <h2>🚀 INVEST ANALYZER PRO 7.0 ONLINE</h2>
-
-        <p>
-        Seu painel está pronto.
-        </p>
-
-        <hr>
-
-        <h3>🔎 Pesquisa individual</h3>
-
-        <p>
-        Digite um ticker:
-        <b>PETR4</b>,
-        <b>VALE3</b>,
-        <b>ITUB4</b>,
-        <b>MXRF11</b>,
-        <b>BTLG11</b>
-        </p>
-
-        <h3>⚖️ Comparação</h3>
-
-        <p>
-        Digite:
-        <b>PETR4,VALE3,ITUB4</b>
-        </p>
-
-        <h3>📊 O PRO 7.0 possui</h3>
-
-        <ul>
-
-        <li>🔎 Pesquisa por ticker</li>
-
-        <li>📋 Ficha completa</li>
-
-        <li>💰 Preço</li>
-
-        <li>💵 Dividend Yield</li>
-
-        <li>📊 P/L</li>
-
-        <li>📊 P/VP</li>
-
-        <li>📈 ROE</li>
-
-        <li>💳 Dívida/PL</li>
-
-        <li>📈 Crescimento</li>
-
-        <li>📊 Margem</li>
-
-        <li>📉 Beta</li>
-
-        <li>⭐ Nota automática de 0 a 10</li>
-
-        <li>⚠️ Classificação de risco</li>
-
-        <li>📌 Conclusão automática</li>
-
-        <li>📈 Gráfico de 1 ano</li>
-
-        <li>🏆 Ranking de ações</li>
-
-        <li>🏢 Ranking de FIIs</li>
-
-        <li>⭐ Possíveis oportunidades</li>
-
-        <li>🏆 TOP 5</li>
-
-        <li>⚖️ Comparação entre ativos</li>
-
-        <li>📄 Exportação CSV</li>
-
-        <li>📊 Exportação Excel</li>
-
-        <li>🔄 Atualização dos dados</li>
-
-        </ul>
-
-        <hr>
-
-        <p>
-        ⚠️ <b>Importante:</b>
-        a nota e os sinais são critérios automáticos
-        para auxiliar na análise. Não constituem recomendação
-        personalizada nem garantia de rentabilidade.
-        </p>
-
-        </div>
-        """)
-    )
-
-
-print("=" * 60)
-print("🚀 INVEST ANALYZER PRO 7.0")
-print("✅ SISTEMA CARREGADO COM SUCESSO")
-print("✅ DASHBOARD ONLINE")
-print("✅ PESQUISA POR TICKER")
-print("✅ RANKING")
-print("✅ COMPARAÇÃO")
-print("✅ ANÁLISE DE RISCO")
-print("✅ NOTA AUTOMÁTICA")
-print("=" * 60)
-if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=10000)
+pesquisar_ticker()
