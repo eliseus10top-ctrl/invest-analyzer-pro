@@ -1,2 +1,6 @@
 Flask==2.3.3
-reportlab>=4.0.0
+gunicorn==21.2.0  # ← adiciona essa linha!
+yfinance>=0.2.36
+pandas>=2.0
+numpy>=1.24
+
